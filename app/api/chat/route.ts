@@ -200,8 +200,8 @@ export async function POST(request: NextRequest) {
 
     // Process Claude's response
     for (const content of response.content) {
-      if (content.type === 'text' && 'text' in content) {
-        responseText += content.text
+      if (content.type === 'text') {
+        responseText += (content as any).text
       } else if (content.type === 'tool_use') {
         // Execute the requested action
         const toolName = content.name
