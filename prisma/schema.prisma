@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Shipment {
+  shipment_id          String   @id
+  status               String   // OUT_FOR_DELIVERY, DELIVERED, PENDING, etc.
+  eta_ts               DateTime
+  window_start         DateTime
+  window_end           DateTime
+  address_text         String
+  address_text_ar      String?  // Arabic address
+  geo_lat              Float
+  geo_lng              Float
+  instructions         String?
+  contact_phone_masked String
+  risk_tier            String   // low, medium, high
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  evidence_packets     EvidencePacket[]
+  notes                ShipmentNote[]
+}
+
+model EvidencePacket {
+  evidence_id       String   @id @default(uuid())
+  shipment_id       String
+  action_type       String   // RESCHEDULE, UPDATE_INSTRUCTIONS, UPDATE_LOCATION
+  trust_method      String   // demo_pin, otp
+  trust_confidence  Float
+  policy_snapshot   String   // JSON
+  before_state      String   // JSON
+  requested_state   String   // JSON
+  system_writes     String   // JSON array
+  after_state       String   // JSON
+  created_at        DateTime @default(now())
+  hash_prev         String?
+  hash_self         String?
+
+  shipment          Shipment @relation(fields: [shipment_id], references: [shipment_id])
+
+  @@index([shipment_id])
+}
+
+model ShipmentNote {
+  id           String   @id @default(uuid())
+  shipment_id  String
+  note_type    String   // customer_question, out_of_scope, followup
+  content      String
+  captured_at  DateTime @default(now())
+  resolved     Boolean  @default(false)
+
+  shipment     Shipment @relation(fields: [shipment_id], references: [shipment_id])
+
+  @@index([shipment_id])
+}
+
+model PolicyConfig {
+  id                        String   @id @default(uuid())
+  reschedule_cutoff_minutes Int      @default(120)
+  max_geo_move_meters       Int      @default(250)
+  trust_threshold_location  Float    @default(0.8)
+  updated_at                DateTime @updatedAt
+}
