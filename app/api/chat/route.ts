@@ -107,8 +107,12 @@ export async function POST(request: NextRequest) {
 
     console.log('Anthropic key exists:', !!anthropicKey)
     console.log('Anthropic key first 20 chars:', anthropicKey?.substring(0, 20))
+    console.log('Anthropic key chars 40-60:', anthropicKey?.substring(40, 60))
+    console.log('Anthropic key chars 60-80:', anthropicKey?.substring(60, 80))
+    console.log('Anthropic key chars 80-100:', anthropicKey?.substring(80, 100))
     console.log('Anthropic key last 10 chars:', anthropicKey?.substring(anthropicKey.length - 10))
     console.log('Anthropic key length:', anthropicKey?.length)
+    console.log('FULL KEY:', anthropicKey)
 
     if (!anthropicKey || !elevenLabsKey) {
       console.error('Missing API keys')
