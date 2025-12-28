@@ -8,13 +8,7 @@ import { dispatchClient } from '@/lib/tool-servers/dispatch'
 import { prisma } from '@/lib/prisma'
 import { geocodeAddress } from '@/lib/geocoding'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
-const elevenlabs = new ElevenLabsClient({
-  apiKey: process.env.ELEVENLABS_API_KEY,
-})
+// Initialize clients inside the handler to ensure env vars are available
 
 // System prompt for Claude (Arabic-first, conversational, task-focused)
 const SYSTEM_PROMPT = `أنت مساعد توصيل ذكي للطرود. هدفك: مساعدة العملاء في تعديل تفاصيل التوصيل بسرعة ودقة.
@@ -115,6 +109,15 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    // Initialize clients with environment variables
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
+    const elevenlabs = new ElevenLabsClient({
+      apiKey: process.env.ELEVENLABS_API_KEY,
+    })
 
     const body = await request.json()
     const { message, shipment_id } = body
