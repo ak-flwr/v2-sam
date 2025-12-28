@@ -6,6 +6,7 @@ import { omsClient } from '@/lib/tool-servers/oms'
 import { normalizeShipment } from '@/lib/domain/normalize'
 import { dispatchClient } from '@/lib/tool-servers/dispatch'
 import { prisma } from '@/lib/prisma'
+import { geocodeAddress } from '@/lib/geocoding'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -209,28 +210,31 @@ export async function POST(request: NextRequest) {
               responseText += `\n\n❌ ${actionResult.denialReason || actionResult.error}`
             }
           } else if (toolName === 'update_location') {
-            // Simple geocoding fallback (will be enhanced later)
-            // For demo, we'll use approximate coordinates based on Riyadh landmarks
+            // Geocode the address to get coordinates
             const geocoded = await geocodeAddress(toolInput.new_address)
 
-            actionResult = await executeAction(
-              {
-                type: 'UPDATE_LOCATION',
-                geo_pin: geocoded,
-                address: {
-                  text: toolInput.new_address,
-                  text_ar: toolInput.new_address,
-                },
-              },
-              shipment_id
-            )
-
-            actionExecuted = true
-
-            if (actionResult.success) {
-              responseText += `\n\n✅ تم تحديث الموقع.`
+            if (!geocoded) {
+              responseText += `\n\n❌ لم أتمكن من تحديد موقع "${toolInput.new_address}". هل يمكنك تقديم عنوان أكثر تحديداً في الرياض؟`
             } else {
-              responseText += `\n\n❌ ${actionResult.denialReason || actionResult.error}`
+              actionResult = await executeAction(
+                {
+                  type: 'UPDATE_LOCATION',
+                  geo_pin: geocoded,
+                  address: {
+                    text: toolInput.new_address,
+                    text_ar: toolInput.new_address,
+                  },
+                },
+                shipment_id
+              )
+
+              actionExecuted = true
+
+              if (actionResult.success) {
+                responseText += `\n\n✅ تم تحديث الموقع.`
+              } else {
+                responseText += `\n\n❌ ${actionResult.denialReason || actionResult.error}`
+              }
             }
           }
         } catch (error) {
@@ -322,37 +326,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-// Simple geocoding fallback (demo version)
-async function geocodeAddress(
-  address: string
-): Promise<{ lat: number; lng: number }> {
-  // For demo, use approximate coordinates based on common Riyadh locations
-  // In production, this would call a real geocoding API
-
-  const lowerAddress = address.toLowerCase()
-
-  // Riyadh landmarks (approximate coordinates)
-  if (lowerAddress.includes('الملك فهد') || lowerAddress.includes('king fahd')) {
-    return { lat: 24.7136, lng: 46.6753 }
-  }
-  if (
-    lowerAddress.includes('العليا') ||
-    lowerAddress.includes('olaya') ||
-    lowerAddress.includes('olaia')
-  ) {
-    return { lat: 24.6969, lng: 46.6855 }
-  }
-  if (lowerAddress.includes('الملقا') || lowerAddress.includes('malqa')) {
-    return { lat: 24.7716, lng: 46.6219 }
-  }
-  if (lowerAddress.includes('حطين') || lowerAddress.includes('hittin')) {
-    return { lat: 24.7744, lng: 46.6361 }
-  }
-
-  // Default: slight offset from current location (within policy radius)
-  return { lat: 24.7136 + Math.random() * 0.002, lng: 46.6753 + Math.random() * 0.002 }
 }
 
 // Simple heuristic to detect out-of-scope questions
