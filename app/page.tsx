@@ -185,6 +185,15 @@ export default function ChatPage() {
     })
   }
 
+  // Don't render until mounted to avoid hydration issues
+  if (!mounted) {
+    return (
+      <div className="flex h-screen bg-gray-50 items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Left Panel - Chat Transcript */}
@@ -210,11 +219,9 @@ export default function ChatPage() {
                 }`}
               >
                 <p className="arabic-text whitespace-pre-wrap">{msg.content}</p>
-                {mounted && (
-                  <p className="text-xs opacity-70 mt-1">
-                    {msg.timestamp.toLocaleTimeString('ar-SA')}
-                  </p>
-                )}
+                <p className="text-xs opacity-70 mt-1">
+                  {msg.timestamp.toLocaleTimeString('ar-SA')}
+                </p>
               </div>
             </div>
           ))}
@@ -304,7 +311,7 @@ export default function ChatPage() {
 
               <div>
                 <p className="text-xs text-gray-500 arabic-text">وقت الوصول المتوقع</p>
-                <p className="font-semibold">{mounted ? formatTime(shipment.eta) : '...'}</p>
+                <p className="font-semibold">{formatTime(shipment.eta)}</p>
               </div>
 
               <div>
