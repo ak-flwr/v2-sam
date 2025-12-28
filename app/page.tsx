@@ -58,6 +58,10 @@ export default function ChatPage() {
   const loadShipment = async (shipmentId: string) => {
     try {
       const response = await fetch(`/api/shipments/${shipmentId}`)
+      if (!response.ok) {
+        console.warn('Shipment not found - database may need seeding')
+        return
+      }
       const data = await response.json()
       setShipment(data)
     } catch (error) {

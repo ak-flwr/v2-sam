@@ -119,6 +119,17 @@ export async function POST(request: NextRequest) {
 
     // Get current shipment context
     const rawShipment = await omsClient.getShipment(shipment_id)
+
+    if (!rawShipment) {
+      return NextResponse.json(
+        {
+          text: 'عذراً، لم أتمكن من العثور على الشحنة. يبدو أن قاعدة البيانات بحاجة إلى البذر. يرجى الاتصال بالدعم.',
+          error: 'Shipment not found - database may need seeding'
+        },
+        { status: 404 }
+      )
+    }
+
     const routeLocked = await dispatchClient.isRouteLocked(shipment_id)
     const shipment = normalizeShipment(rawShipment, routeLocked)
 

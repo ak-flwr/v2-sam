@@ -13,6 +13,13 @@ export async function GET(
     // Get shipment from OMS
     const rawShipment = await omsClient.getShipment(shipmentId)
 
+    if (!rawShipment) {
+      return NextResponse.json(
+        { error: 'Shipment not found - database may need seeding' },
+        { status: 404 }
+      )
+    }
+
     // Check route lock status
     const routeLocked = await dispatchClient.isRouteLocked(shipmentId)
 
