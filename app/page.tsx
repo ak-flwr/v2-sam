@@ -30,13 +30,7 @@ interface ShipmentData {
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'agent',
-      content: 'مرحبا! أنا هنا لمساعدتك في تعديل تفاصيل التسليم. كيف يمكنني مساعدتك؟',
-      timestamp: new Date(),
-    },
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -51,9 +45,16 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Mark component as mounted to prevent hydration errors
+  // Mark component as mounted and add welcome message
   useEffect(() => {
     setMounted(true)
+    setMessages([
+      {
+        role: 'agent',
+        content: 'مرحبا! أنا هنا لمساعدتك في تعديل تفاصيل التسليم. كيف يمكنني مساعدتك؟',
+        timestamp: new Date(),
+      },
+    ])
   }, [])
 
   // Load default shipment on mount
