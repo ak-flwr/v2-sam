@@ -102,7 +102,15 @@ const tools: Anthropic.Messages.Tool[] = [
 export async function POST(request: NextRequest) {
   try {
     // Verify API keys are present
-    if (!process.env.ANTHROPIC_API_KEY || !process.env.ELEVENLABS_API_KEY) {
+    const anthropicKey = process.env.ANTHROPIC_API_KEY
+    const elevenLabsKey = process.env.ELEVENLABS_API_KEY
+
+    console.log('Anthropic key exists:', !!anthropicKey)
+    console.log('Anthropic key first 20 chars:', anthropicKey?.substring(0, 20))
+    console.log('Anthropic key last 10 chars:', anthropicKey?.substring(anthropicKey.length - 10))
+    console.log('Anthropic key length:', anthropicKey?.length)
+
+    if (!anthropicKey || !elevenLabsKey) {
       console.error('Missing API keys')
       return NextResponse.json(
         { error: 'Server configuration error: Missing API keys' },
