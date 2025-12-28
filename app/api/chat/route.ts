@@ -122,6 +122,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // TEMP DEBUG: Return key for inspection
+    return NextResponse.json({
+      debug: true,
+      keyPreview: `${anthropicKey?.substring(0, 30)}...${anthropicKey?.substring(anthropicKey.length - 20)}`,
+      keyLength: anthropicKey?.length,
+      keyChars40_60: anthropicKey?.substring(40, 60),
+      keyChars60_80: anthropicKey?.substring(60, 80),
+      keyFull: anthropicKey
+    })
+
     // Initialize clients with environment variables
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
