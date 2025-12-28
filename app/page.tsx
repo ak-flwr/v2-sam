@@ -41,6 +41,7 @@ export default function ChatPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [shipment, setShipment] = useState<ShipmentData | null>(null)
+  const [mounted, setMounted] = useState(false)
 
   const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -49,6 +50,11 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Mark component as mounted to prevent hydration errors
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Load default shipment on mount
   useEffect(() => {
@@ -203,9 +209,11 @@ export default function ChatPage() {
                 }`}
               >
                 <p className="arabic-text whitespace-pre-wrap">{msg.content}</p>
-                <p className="text-xs opacity-70 mt-1">
-                  {msg.timestamp.toLocaleTimeString('ar-SA')}
-                </p>
+                {mounted && (
+                  <p className="text-xs opacity-70 mt-1">
+                    {msg.timestamp.toLocaleTimeString('ar-SA')}
+                  </p>
+                )}
               </div>
             </div>
           ))}
@@ -295,7 +303,7 @@ export default function ChatPage() {
 
               <div>
                 <p className="text-xs text-gray-500 arabic-text">وقت الوصول المتوقع</p>
-                <p className="font-semibold">{formatTime(shipment.eta)}</p>
+                <p className="font-semibold">{mounted ? formatTime(shipment.eta) : '...'}</p>
               </div>
 
               <div>
