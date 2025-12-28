@@ -107,6 +107,15 @@ const tools: Anthropic.Messages.Tool[] = [
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify API keys are present
+    if (!process.env.ANTHROPIC_API_KEY || !process.env.ELEVENLABS_API_KEY) {
+      console.error('Missing API keys')
+      return NextResponse.json(
+        { error: 'Server configuration error: Missing API keys' },
+        { status: 500 }
+      )
+    }
+
     const body = await request.json()
     const { message, shipment_id } = body
 
