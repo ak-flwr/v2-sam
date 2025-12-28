@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
 
     // Process Claude's response
     for (const content of response.content) {
-      if (content.type === 'text') {
+      if (content.type === 'text' && 'text' in content) {
         responseText += content.text
       } else if (content.type === 'tool_use') {
         // Execute the requested action
