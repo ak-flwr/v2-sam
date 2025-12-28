@@ -204,8 +204,8 @@ export async function POST(request: NextRequest) {
         responseText += (content as any).text
       } else if (content.type === 'tool_use') {
         // Execute the requested action
-        const toolName = content.name
-        const toolInput = content.input as any
+        const toolName = (content as any).name
+        const toolInput = (content as any).input
 
         try {
           if (toolName === 'reschedule_delivery') {
