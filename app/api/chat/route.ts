@@ -281,15 +281,21 @@ export async function POST(request: NextRequest) {
         process.env.ELEVENLABS_VOICE_ID_AR || 'v0GSOyVKHcHq81326mCE',
         {
           text: responseText,
-          model_id: 'eleven_multilingual_v2',
+          modelId: 'eleven_multilingual_v2',
         }
       )
 
       // Convert audio stream to base64 data URL
+      const reader = audio.getReader()
       const chunks: Uint8Array[] = []
-      for await (const chunk of audio) {
-        chunks.push(chunk)
+      let done = false
+
+      while (!done) {
+        const { value, done: streamDone } = await reader.read()
+        if (value) chunks.push(value)
+        done = streamDone
       }
+
       const audioBuffer = Buffer.concat(chunks)
       const base64Audio = audioBuffer.toString('base64')
       audioUrl = `data:audio/mpeg;base64,${base64Audio}`

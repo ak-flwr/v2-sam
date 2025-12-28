@@ -5,10 +5,10 @@ import { dispatchClient } from '@/lib/tool-servers/dispatch'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const shipmentId = params.id
+    const { id: shipmentId } = await params
 
     // Get shipment from OMS
     const rawShipment = await omsClient.getShipment(shipmentId)
