@@ -40,10 +40,12 @@ export default function ChatPage() {
   const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Mark component as mounted and add welcome message
   useEffect(() => {
     setMounted(true)
     setMessages([
@@ -55,6 +57,7 @@ export default function ChatPage() {
     ])
   }, [])
 
+  // Load default shipment on mount
   useEffect(() => {
     loadShipment('SHP-2025-001')
   }, [])
@@ -82,7 +85,7 @@ export default function ChatPage() {
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
     const recognition = new SpeechRecognition()
 
-    recognition.lang = 'ar-SA'
+    recognition.lang = 'ar-SA' // Arabic (Saudi Arabia)
     recognition.continuous = false
     recognition.interimResults = false
 
@@ -113,6 +116,7 @@ export default function ChatPage() {
   }
 
   const handleUserMessage = async (text: string) => {
+    // Add user message
     const userMessage: Message = {
       role: 'user',
       content: text,
@@ -123,6 +127,7 @@ export default function ChatPage() {
     setIsProcessing(true)
 
     try {
+      // Send to backend
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -134,6 +139,7 @@ export default function ChatPage() {
 
       const data = await response.json()
 
+      // Add agent response
       const agentMessage: Message = {
         role: 'agent',
         content: data.text,
@@ -142,10 +148,12 @@ export default function ChatPage() {
       }
       setMessages(prev => [...prev, agentMessage])
 
+      // Play audio if available
       if (data.audioUrl) {
         playAudio(data.audioUrl)
       }
 
+      // Update shipment if changed
       if (data.updatedShipment) {
         setShipment(data.updatedShipment)
       }
@@ -177,40 +185,41 @@ export default function ChatPage() {
     })
   }
 
+  // Don't render until mounted to avoid hydration issues
   if (!mounted) {
     return (
-      <div className="flex h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 items-center justify-center">
-        <div className="text-white">Loading...</div>
+      <div className="flex h-screen bg-gray-50 items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      {/* Left Panel - Chat */}
-      <div className="w-1/2 flex flex-col p-6">
+    <div className="flex h-screen bg-gray-50">
+      {/* Left Panel - Chat Transcript */}
+      <div className="w-1/2 flex flex-col border-r border-gray-200 bg-white">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2 arabic-text">SAM v2</h1>
-          <p className="text-blue-200 text-sm">نظام التحكم الذكي بالتسليم</p>
+        <div className="bg-blue-600 text-white p-4">
+          <h1 className="text-xl font-bold arabic-text">SAM v2 - نظام التحكم بالتسليم</h1>
+          <p className="text-sm opacity-90">Resolution Engine</p>
         </div>
 
-        {/* Messages Container */}
-        <div className="flex-1 overflow-y-auto space-y-4 mb-6 pr-2 scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, idx) => (
             <div
               key={idx}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 backdrop-blur-sm ${
+                className={`max-w-[80%] rounded-lg p-3 ${
                   msg.role === 'user'
-                    ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-lg shadow-teal-500/50'
-                    : 'bg-slate-800/80 text-gray-100 border border-slate-700 shadow-lg'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-800'
                 }`}
               >
-                <p className="arabic-text whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                <p className="text-xs opacity-60 mt-2">
+                <p className="arabic-text whitespace-pre-wrap">{msg.content}</p>
+                <p className="text-xs opacity-70 mt-1">
                   {msg.timestamp.toLocaleTimeString('ar-SA')}
                 </p>
               </div>
@@ -218,11 +227,11 @@ export default function ChatPage() {
           ))}
           {isProcessing && (
             <div className="flex justify-start">
-              <div className="bg-slate-800/80 border border-slate-700 rounded-2xl px-4 py-3">
+              <div className="bg-gray-100 rounded-lg p-3">
                 <div className="flex space-x-2">
-                  <div className="w-2 h-2 bg-teal-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                  <div className="w-2 h-2 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
                 </div>
               </div>
             </div>
@@ -231,93 +240,97 @@ export default function ChatPage() {
         </div>
 
         {/* PTT Button */}
-        <button
-          onMouseDown={startRecording}
-          onMouseUp={stopRecording}
-          onTouchStart={startRecording}
-          onTouchEnd={stopRecording}
-          disabled={isProcessing}
-          className={`w-full py-4 rounded-2xl font-bold text-white transition-all shadow-2xl ${
-            isRecording
-              ? 'bg-gradient-to-r from-red-500 to-pink-500 shadow-red-500/50 scale-105'
-              : 'bg-gradient-to-r from-teal-500 to-emerald-500 shadow-teal-500/50 hover:scale-105'
-          } disabled:bg-gray-600 disabled:cursor-not-allowed disabled:shadow-none`}
-        >
-          <div className="flex items-center justify-center space-x-3 arabic-text">
-            <span className="text-2xl">🎤</span>
-            <span>{isRecording ? 'جاري التسجيل... اترك الزر للإرسال' : 'اضغط مع الاستمرار للتحدث'}</span>
-          </div>
-        </button>
+        <div className="p-4 border-t border-gray-200">
+          <button
+            onMouseDown={startRecording}
+            onMouseUp={stopRecording}
+            onTouchStart={startRecording}
+            onTouchEnd={stopRecording}
+            disabled={isProcessing}
+            className={`w-full py-4 rounded-lg font-bold text-white transition-all ${
+              isRecording
+                ? 'bg-red-500 hover:bg-red-600 scale-105'
+                : 'bg-blue-600 hover:bg-blue-700'
+            } disabled:bg-gray-400 disabled:cursor-not-allowed`}
+          >
+            {isRecording ? '🎤 جاري التسجيل... اترك الزر للإرسال' : '🎤 اضغط مع الاستمرار للتحدث'}
+          </button>
+        </div>
       </div>
 
-      {/* Right Panel - Avatar & Info */}
-      <div className="w-1/2 flex flex-col items-center justify-center p-8">
-        {/* Avatar with Glow */}
-        <div className="relative mb-8">
-          <div className={`absolute inset-0 rounded-full bg-gradient-to-r from-teal-400 to-emerald-400 blur-xl opacity-50 ${isPlaying ? 'animate-pulse' : ''}`}></div>
-          <div className="relative">
+      {/* Right Panel - Avatar & Shipment Info */}
+      <div className="w-1/2 flex flex-col bg-gradient-to-br from-blue-50 to-indigo-50">
+        {/* Avatar Section */}
+        <div className="flex-1 flex flex-col items-center justify-center p-8">
+          <div className={`relative ${isPlaying ? 'pulse-avatar' : ''}`}>
             <Image
               src="/avatar.svg"
-              alt="AI Assistant"
+              alt="Saudi Assistant"
               width={200}
               height={200}
-              className="rounded-full border-4 border-teal-400 shadow-2xl"
+              className="rounded-full shadow-lg"
             />
           </div>
+
+          {/* Waveform when speaking */}
+          {isPlaying && (
+            <div className="flex items-end space-x-1 mt-4 h-10">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="waveform-bar w-2 bg-blue-500 rounded-full"
+                />
+              ))}
+            </div>
+          )}
+
+          <p className="text-gray-600 mt-4 text-center arabic-text">
+            {isPlaying ? 'جاري التحدث...' : 'في انتظار طلبك'}
+          </p>
         </div>
 
-        {/* Status */}
-        <p className="text-teal-300 text-lg mb-8 arabic-text">
-          {isPlaying ? 'جاري التحدث...' : isRecording ? 'جاري الاستماع...' : 'في انتظار طلبك'}
-        </p>
-
-        {/* Shipment Card */}
+        {/* Shipment Context Card */}
         {shipment && (
-          <div className="w-full max-w-md bg-slate-800/60 backdrop-blur-lg border border-slate-700 rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-4 arabic-text flex items-center">
-              <span className="text-2xl ml-2">📦</span>
-              تفاصيل الشحنة
-            </h2>
+          <div className="p-6 bg-white border-t border-gray-200">
+            <h2 className="text-lg font-bold mb-4 arabic-text">تفاصيل الشحنة</h2>
 
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <p className="text-gray-400 text-sm">رقم الشحنة</p>
-                <p className="font-mono text-teal-300 text-sm font-semibold">{shipment.shipment_id}</p>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-gray-500">رقم الشحنة</p>
+                <p className="font-mono text-sm">{shipment.shipment_id}</p>
               </div>
 
-              <div className="flex justify-between items-center">
-                <p className="text-gray-400 text-sm">الحالة</p>
-                <span className="px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full text-xs font-semibold shadow-lg">
-                  {shipment.status === 'OUT_FOR_DELIVERY' ? 'في الطريق' : shipment.status}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <p className="text-gray-400 text-sm arabic-text">وقت الوصول</p>
-                <p className="text-white font-semibold">{formatTime(shipment.eta)}</p>
-              </div>
-
-              <div className="pt-4 border-t border-slate-700">
-                <p className="text-gray-400 text-xs mb-2 arabic-text">العنوان</p>
-                <p className="text-white text-sm arabic-text leading-relaxed">
-                  {shipment.address.text_ar || shipment.address.text}
+              <div>
+                <p className="text-xs text-gray-500">الحالة</p>
+                <p className="font-semibold text-sm">
+                  <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded">
+                    {shipment.status === 'OUT_FOR_DELIVERY' ? 'في الطريق' : shipment.status}
+                  </span>
                 </p>
               </div>
 
+              <div>
+                <p className="text-xs text-gray-500 arabic-text">وقت الوصول المتوقع</p>
+                <p className="font-semibold">{formatTime(shipment.eta)}</p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 arabic-text">العنوان</p>
+                <p className="text-sm arabic-text">{shipment.address.text_ar || shipment.address.text}</p>
+              </div>
+
               {shipment.instructions && (
-                <div className="pt-4 border-t border-slate-700">
-                  <p className="text-gray-400 text-xs mb-2 arabic-text">ملاحظات</p>
-                  <p className="text-white text-sm">{shipment.instructions}</p>
+                <div>
+                  <p className="text-xs text-gray-500 arabic-text">ملاحظات التسليم</p>
+                  <p className="text-sm">{shipment.instructions}</p>
                 </div>
               )}
 
-              {/* Map Coordinates */}
-              <div className="pt-4 border-t border-slate-700">
-                <div className="bg-slate-900/50 rounded-xl p-4 text-center">
-                  <p className="text-teal-300 text-sm">
-                    📍 {shipment.geo_pin.lat.toFixed(4)}, {shipment.geo_pin.lng.toFixed(4)}
-                  </p>
-                </div>
+              {/* Simple map placeholder */}
+              <div className="mt-4 h-32 bg-gray-200 rounded-lg flex items-center justify-center">
+                <p className="text-gray-500 text-sm">
+                  📍 {shipment.geo_pin.lat.toFixed(4)}, {shipment.geo_pin.lng.toFixed(4)}
+                </p>
               </div>
             </div>
           </div>
