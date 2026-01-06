@@ -311,6 +311,7 @@ async function getPolicyConfig(): Promise<PolicyConfig> {
       reschedule_cutoff_minutes: config.reschedule_cutoff_minutes,
       max_geo_move_meters: config.max_geo_move_meters,
       trust_threshold_location: config.trust_threshold_location,
+      max_content_multiplier: config.max_content_multiplier,
     }
   }
 
@@ -320,6 +321,7 @@ async function getPolicyConfig(): Promise<PolicyConfig> {
       reschedule_cutoff_minutes: 120,
       max_geo_move_meters: 250,
       trust_threshold_location: 0.8,
+      max_content_multiplier: 0,
     },
   })
 
@@ -327,5 +329,6 @@ async function getPolicyConfig(): Promise<PolicyConfig> {
     reschedule_cutoff_minutes: defaultConfig.reschedule_cutoff_minutes,
     max_geo_move_meters: defaultConfig.max_geo_move_meters,
     trust_threshold_location: defaultConfig.trust_threshold_location,
+    max_content_multiplier: defaultConfig.max_content_multiplier,
   }
 }

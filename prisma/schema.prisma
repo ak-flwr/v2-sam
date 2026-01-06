@@ -10,6 +10,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ConversationStatus {
+  OPEN
+  ACTIVE
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
 model Shipment {
   shipment_id          String   @id
   status               String   // OUT_FOR_DELIVERY, DELIVERED, PENDING, etc.
@@ -20,6 +28,7 @@ model Shipment {
   address_text_ar      String?  // Arabic address
   geo_lat              Float
   geo_lng              Float
+  package_content      String?  // Arabic description of package contents
   instructions         String?
   contact_phone_masked String
   risk_tier            String   // low, medium, high
@@ -28,6 +37,7 @@ model Shipment {
 
   evidence_packets     EvidencePacket[]
   notes                ShipmentNote[]
+  conversations        Conversation[]
 }
 
 model EvidencePacket {
@@ -63,10 +73,95 @@ model ShipmentNote {
   @@index([shipment_id])
 }
 
+model Conversation {
+  id            String             @id @default(uuid())
+  shipmentId    String             @map("shipment_id")
+  shipment      Shipment           @relation(fields: [shipmentId], references: [shipment_id])
+  status        ConversationStatus @default(OPEN)
+  openedAt      DateTime           @default(now()) @map("opened_at")
+  resolvedAt    DateTime?          @map("resolved_at")
+  closedAt      DateTime?          @map("closed_at")
+  reopenedAt    DateTime?          @map("reopened_at")
+  actionsTaken  Int                @default(0) @map("actions_taken")
+  lastMessageAt DateTime           @default(now()) @map("last_message_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  @@index([shipmentId])
+  @@index([status])
+  @@map("conversations")
+}
+
 model PolicyConfig {
   id                        String   @id @default(uuid())
   reschedule_cutoff_minutes Int      @default(120)
   max_geo_move_meters       Int      @default(250)
   trust_threshold_location  Float    @default(0.8)
+  max_content_multiplier    Int      @default(0)  // 0=not allowed, 1-5=max multiplier for order changes
   updated_at                DateTime @updatedAt
+}
+
+// v2.1 Policy Engine Models
+
+model Policy {
+  id             String   @id @default(cuid())
+  policy_id      String
+  policy_version String
+  environment    String   // dev, staging, prod
+  active         Boolean  @default(true)
+  effective_at   DateTime
+
+  name           String?
+  description    String?
+
+  document       Json     // Full PolicyDocument JSON
+
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  updated_by     String?
+  change_reason  String?
+
+  @@index([environment, active, effective_at])
+  @@unique([policy_id, policy_version, environment], name: "policy_id_policy_version_environment")
+}
+
+model TelemetryEvent {
+  id              String   @id @default(cuid())
+  ts              DateTime @default(now())
+  event           String   // conversation.started, conversation.ended, action.executed, escalation.triggered
+  environment     String   // dev, staging, prod
+
+  conversation_id String?
+  case_key        String?  // shipment_id or other case identifier
+
+  policy_id       String?
+  policy_version  String?
+
+  payload         Json     // Event-specific data
+
+  created_at      DateTime @default(now())
+
+  @@index([event, ts])
+  @@index([case_key, ts])
+  @@index([conversation_id])
+  @@index([policy_id, policy_version])
+}
+
+model KpiAggregate {
+  id             String   @id @default(cuid())
+  bucket         String   // "hour" | "day"
+  bucket_start   DateTime
+  bucket_end     DateTime
+  environment    String   // dev, staging, prod
+
+  policy_id      String
+  policy_version String
+
+  totals         Json     // { total_conversations, contained_count, escalated_count, resolved_count, rework_count }
+  metrics        Json     // { aht_mean, aht_p50, aht_p90, containment_rate, escalation_rate, rework_rate, ... }
+
+  created_at     DateTime @default(now())
+
+  @@unique([bucket, bucket_start, environment, policy_id, policy_version], name: "kpi_bucket_unique")
+  @@index([environment, bucket, bucket_start])
 }

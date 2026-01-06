@@ -28,6 +28,7 @@ export function normalizeShipment(
       text: shipment.address_text,
       text_ar: shipment.address_text_ar || undefined,
     },
+    package_content: shipment.package_content || undefined,
     instructions: shipment.instructions || undefined,
     contact_phone_masked: shipment.contact_phone_masked,
     risk_tier: shipment.risk_tier as 'low' | 'medium' | 'high',

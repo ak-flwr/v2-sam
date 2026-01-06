@@ -65,27 +65,8 @@ export class MockDispatchClient implements DispatchClient {
   }
 
   async isRouteLocked(shipment_id: string): Promise<boolean> {
-    // Get shipment to check ETA
-    const shipment = await prisma.shipment.findUnique({
-      where: { shipment_id },
-    })
-
-    if (!shipment) {
-      throw new Error(`Shipment ${shipment_id} not found`)
-    }
-
-    // Simple mock logic: route is locked if ETA is within 60 minutes
-    // In real system, would check driver location, route optimization status, etc.
-    const now = new Date()
-    const eta = shipment.eta_ts
-    const minutesUntilETA = (eta.getTime() - now.getTime()) / 60000
-
-    // Lock route if within 60 minutes of ETA or if delivery is in progress
-    const isLocked =
-      minutesUntilETA <= 60 ||
-      shipment.status === 'OUT_FOR_DELIVERY' ||
-      shipment.status === 'DELIVERED'
-
-    return isLocked
+    // Phase 0 Demo: Always allow changes - route is never locked
+    // In Phase 1, this would check driver location, route optimization status, etc.
+    return false
   }
 }

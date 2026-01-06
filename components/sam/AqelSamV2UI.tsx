@@ -1,0 +1,861 @@
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { motion } from "framer-motion";
+import {
+  Mic,
+  Plus,
+  Volume2,
+  CheckCircle2,
+  ShieldCheck,
+  Wrench,
+  Database,
+  ScrollText,
+  MapPin,
+  Send,
+  ChevronDown,
+  Loader2,
+} from "lucide-react";
+
+// Types
+type MsgTag = { label: string; tone?: "ok" | "warn" | "neutral" };
+
+type ChatMessage = {
+  id: string;
+  who: "assistant" | "user";
+  text: string;
+  time: string;
+  tags?: MsgTag[];
+  audioUrl?: string;
+};
+
+type RightTab = "tools" | "db" | "logs";
+
+type Shipment = {
+  shipment_id: string;
+  status: string;
+  eta_ts: string;
+  window_start: string;
+  window_end: string;
+  address_text: string;
+  address_text_ar: string | null;
+  geo_lat: number;
+  geo_lng: number;
+  package_content: string | null;
+  instructions: string | null;
+  contact_phone_masked: string;
+  risk_tier: string;
+};
+
+type LogEntry = {
+  time: string;
+  action: string;
+  status: "ok" | "error";
+  latency?: number;
+};
+
+// Helpers
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function nowHHMM() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function formatTime(isoString: string) {
+  const d = new Date(isoString);
+  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+
+// Components
+function Tag({ tag }: { tag: MsgTag }) {
+  const base = "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] leading-none";
+  if (tag.tone === "ok") {
+    return (
+      <span className={cx(base, "border-emerald-400/30 bg-emerald-500/15 text-white/90")}>
+        <CheckCircle2 className="h-3 w-3 opacity-90" />
+        {tag.label}
+      </span>
+    );
+  }
+  if (tag.tone === "warn") {
+    return (
+      <span className={cx(base, "border-orange-400/30 bg-orange-500/15 text-white/90")}>
+        <ShieldCheck className="h-3 w-3 opacity-90" />
+        {tag.label}
+      </span>
+    );
+  }
+  return <span className={cx(base, "border-white/10 bg-white/5 text-white/70")}>{tag.label}</span>;
+}
+
+function MessageBubble({ m, onPlayAudio }: { m: ChatMessage; onPlayAudio?: (url: string) => void }) {
+  const isUser = m.who === "user";
+  return (
+    <div className={cx("flex w-full", isUser ? "justify-end" : "justify-start")}>
+      <div
+        className={cx(
+          "max-w-[min(760px,82%)] rounded-2xl border px-4 py-3 shadow-[0_10px_25px_rgba(0,0,0,.25)] backdrop-blur-xl",
+          isUser
+            ? "border-emerald-300/25 bg-[radial-gradient(220px_140px_at_15%_30%,rgba(35,213,171,.22),transparent_55%),linear-gradient(135deg,rgba(16,185,129,.22),rgba(6,40,1,.22))]"
+            : "border-white/10 bg-white/5"
+        )}
+      >
+        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-white/95">{m.text}</div>
+        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-white/55">
+          <div className="flex flex-wrap gap-2">
+            {(m.tags ?? []).map((t, i) => <Tag key={i} tag={t} />)}
+            {m.audioUrl && onPlayAudio && (
+              <button
+                onClick={() => onPlayAudio(m.audioUrl!)}
+                className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-white/70 hover:bg-white/10"
+              >
+                <Volume2 className="h-3 w-3" />
+                Play
+              </button>
+            )}
+          </div>
+          <span className="tabular-nums">{m.time}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WaveBars({ active, tone }: { active: boolean; tone: "teal" | "orange" }) {
+  const bars = useMemo(() => [0, 1, 2, 3, 4], []);
+  const color = tone === "orange" ? "rgba(231,115,0,.80)" : "rgba(234,242,255,.55)";
+
+  return (
+    <div className={cx("flex h-7 items-end gap-1", active ? "opacity-95" : "opacity-55")}>
+      {bars.map((b) => (
+        <motion.span
+          key={b}
+          className="w-1 rounded-full"
+          style={{ backgroundColor: color }}
+          animate={active ? { height: [8, 26, 10, 22, 8] } : { height: [8, 14, 10, 12, 8] }}
+          transition={
+            active
+              ? { duration: 0.55, repeat: Infinity, ease: "easeInOut", delay: b * 0.08 }
+              : { duration: 1.4, repeat: Infinity, ease: "easeInOut", delay: b * 0.10 }
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function Orb({ speaking }: { speaking: boolean }) {
+  return (
+    <div className="relative">
+      <motion.div
+        className="absolute -inset-3 rounded-full border"
+        style={{ borderColor: "rgba(35,213,171,.22)" }}
+        animate={
+          speaking
+            ? { scale: [0.95, 1.18, 0.95], opacity: [0.45, 0.9, 0.45] }
+            : { scale: [0.98, 1.12, 0.98], opacity: [0.45, 0.8, 0.45] }
+        }
+        transition={{ duration: speaking ? 1.1 : 2.2, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <div
+        className={cx(
+          "relative grid h-14 w-14 place-items-center overflow-hidden rounded-full border shadow-[0_18px_46px_rgba(0,0,0,.45)]",
+          speaking ? "border-emerald-300/40" : "border-emerald-300/30"
+        )}
+        style={{
+          backgroundImage:
+            "radial-gradient(22px 22px at 35% 30%, rgba(35,213,171,.75), transparent 60%), radial-gradient(26px 26px at 70% 70%, rgba(16,185,129,.55), transparent 60%), linear-gradient(135deg, rgba(6,40,1,.75), rgba(255,255,255,.06))",
+        }}
+      >
+        <motion.div
+          className="absolute -inset-[35%]"
+          style={{
+            backgroundImage: "conic-gradient(from 180deg, transparent, rgba(35,213,171,.35), transparent)",
+            opacity: 0.55,
+          }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 6.8, repeat: Infinity, ease: "linear" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BrandBadge() {
+  return (
+    <div
+      className="relative h-11 w-11 overflow-hidden rounded-2xl border shadow-[0_12px_26px_rgba(0,0,0,.35)]"
+      style={{
+        borderColor: "rgba(35,213,171,.35)",
+        backgroundImage:
+          "radial-gradient(20px 20px at 30% 30%, rgba(35,213,171,.75), transparent 60%), radial-gradient(26px 26px at 70% 70%, rgba(16,185,129,.55), transparent 60%), linear-gradient(135deg, rgba(6,40,1,.65), rgba(35,213,171,.18))",
+      }}
+    >
+      <motion.div
+        className="absolute -inset-[40%]"
+        style={{
+          backgroundImage: "conic-gradient(from 180deg, transparent, rgba(35,213,171,.35), transparent)",
+          opacity: 0.7,
+        }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 4.2, repeat: Infinity, ease: "linear" }}
+      />
+    </div>
+  );
+}
+
+function TopButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/90 transition hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/10"
+      type="button"
+    >
+      <span className="opacity-90">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function MiniPill({ label, tone }: { label: string; tone: "ok" | "neutral" }) {
+  return (
+    <span
+      className={cx(
+        "rounded-full border px-2.5 py-1 text-[11px]",
+        tone === "ok" ? "border-emerald-400/30 bg-emerald-500/15 text-white/90" : "border-white/10 bg-white/5 text-white/70"
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      type="button"
+      className={cx(
+        "flex-1 rounded-xl border px-3 py-2 text-[12px] transition",
+        active
+          ? "border-emerald-300/30 bg-[radial-gradient(120px_60px_at_20%_30%,rgba(35,213,171,.16),transparent_55%),rgba(0,0,0,.20)] text-white/90"
+          : "border-white/10 bg-black/20 text-white/60 hover:border-white/20 hover:bg-black/30"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ToolCard({ title, state, icon, body, code }: { title: string; state: string; icon: React.ReactNode; body: string; code: string }) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="opacity-85">{icon}</span>
+          <div className="text-[13px] font-bold">{title}</div>
+        </div>
+        <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] text-white/75">{state}</span>
+      </div>
+      <div className="text-[12px] leading-relaxed text-white/65">{body}</div>
+      <pre className="mt-3 overflow-auto rounded-xl border border-white/10 bg-black/25 p-3 text-[11px] text-white/85">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function KeyRow({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+      <span className="text-white/65">{k}</span>
+      <span className={cx("text-white/90 text-right", mono && "tabular-nums")}>{v}</span>
+    </div>
+  );
+}
+
+function PTTButton({ recording, onStart, onStop }: { recording: boolean; onStart: () => void; onStop: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      aria-label="Push to talk"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        onStart();
+      }}
+      onPointerUp={() => onStop()}
+      onPointerCancel={() => onStop()}
+      className={cx(
+        "relative grid h-[72px] w-[72px] place-items-center rounded-full border shadow-[0_18px_40px_rgba(0,0,0,.45)] transition",
+        recording ? "border-orange-300/40" : "border-emerald-300/35"
+      )}
+      style={{
+        backgroundImage: recording
+          ? "radial-gradient(40px 40px at 50% 45%, rgba(231,115,0,.22), transparent 60%), linear-gradient(145deg, rgba(231,115,0,.18), rgba(6,40,1,.45))"
+          : "radial-gradient(36px 36px at 35% 30%, rgba(35,213,171,.35), transparent 60%), radial-gradient(40px 40px at 70% 75%, rgba(16,185,129,.25), transparent 60%), linear-gradient(145deg, rgba(6,40,1,.55), rgba(255,255,255,.04))",
+      }}
+      whileTap={{ scale: 0.98 }}
+    >
+      <motion.span
+        className="absolute -inset-2 rounded-full border"
+        style={{ borderColor: recording ? "rgba(231,115,0,.26)" : "rgba(35,213,171,.22)" }}
+        animate={
+          recording
+            ? { scale: [0.95, 1.18, 0.95], opacity: [0.45, 0.9, 0.45] }
+            : { scale: [0.98, 1.12, 0.98], opacity: [0.45, 0.8, 0.45] }
+        }
+        transition={{ duration: recording ? 1.1 : 2.2, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <Mic className="h-7 w-7 text-white/95" />
+    </motion.button>
+  );
+}
+
+function ShipmentDropdown({ shipments, selected, onSelect }: { shipments: Shipment[]; selected: string; onSelect: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const current = shipments.find((s) => s.shipment_id === selected);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/90 hover:border-white/20"
+      >
+        <span>{current?.shipment_id || "Select Shipment"}</span>
+        <ChevronDown className={cx("h-4 w-4 transition", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-xl border border-white/10 bg-[#0a1525] shadow-xl">
+          {shipments.map((s) => (
+            <button
+              key={s.shipment_id}
+              type="button"
+              onClick={() => {
+                onSelect(s.shipment_id);
+                setOpen(false);
+              }}
+              className={cx(
+                "flex w-full items-center justify-between px-3 py-2 text-[12px] hover:bg-white/10",
+                s.shipment_id === selected ? "text-emerald-400" : "text-white/80"
+              )}
+            >
+              <span>{s.shipment_id}</span>
+              <span className="text-white/50">{s.status}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Environment type for policy selection
+type PolicyEnv = "dev" | "staging" | "prod";
+
+// Main Component
+export default function AqelSamV2UI() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [speaking, setSpeaking] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [tab, setTab] = useState<RightTab>("tools");
+  const [draft, setDraft] = useState("");
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [selectedShipment, setSelectedShipment] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [policyEnv, setPolicyEnv] = useState<PolicyEnv>("dev");
+
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const transcriptRef = useRef<string>("");
+  const interimRef = useRef<string>("");
+  const lastSentRef = useRef<string>("");
+
+  // Fetch shipments on mount
+  useEffect(() => {
+    fetch("/api/admin/shipments")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.shipments?.length) {
+          setShipments(data.shipments);
+          setSelectedShipment(data.shipments[0].shipment_id);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
+  // Initial greeting when shipment is selected
+  useEffect(() => {
+    if (selectedShipment && messages.length === 0) {
+      const shipment = shipments.find((s) => s.shipment_id === selectedShipment);
+      if (shipment) {
+        setMessages([
+          {
+            id: "greeting",
+            who: "assistant",
+            text: `أهلاً! أنا سام، مساعدك للتوصيل.\n\nطردك ${shipment.shipment_id} ${shipment.status === "OUT_FOR_DELIVERY" ? "في الطريق إليك" : shipment.status}.\nالعنوان: ${shipment.address_text_ar || shipment.address_text}\n\nكيف أقدر أساعدك؟`,
+            time: nowHHMM(),
+            tags: [{ label: shipment.shipment_id, tone: "neutral" }],
+          },
+        ]);
+      }
+    }
+  }, [selectedShipment, shipments, messages.length]);
+
+  // Add log entry
+  const addLog = useCallback((action: string, status: "ok" | "error", latency?: number) => {
+    setLogs((prev) => [...prev.slice(-20), { time: nowHHMM(), action, status, latency }]);
+  }, []);
+
+  // Play TTS audio
+  const playAudio = useCallback((url: string) => {
+    if (audioRef.current) {
+      audioRef.current.src = url;
+      audioRef.current.play();
+      setSpeaking(true);
+      audioRef.current.onended = () => setSpeaking(false);
+    }
+  }, []);
+
+  // Send message to API
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || !selectedShipment) return;
+
+    const userMsg: ChatMessage = {
+      id: `u-${Date.now()}`,
+      who: "user",
+      text: text.trim(),
+      time: nowHHMM(),
+      tags: [{ label: "User", tone: "neutral" }],
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setLoading(true);
+
+    const start = Date.now();
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text.trim(), shipment_id: selectedShipment, env: policyEnv }),
+      });
+      const data = await res.json();
+      const latency = Date.now() - start;
+
+      if (data.error) {
+        addLog("chat.error", "error", latency);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e-${Date.now()}`,
+            who: "assistant",
+            text: "Sorry, an error occurred. Try again.",
+            time: nowHHMM(),
+            tags: [{ label: "Error", tone: "warn" }],
+          },
+        ]);
+      } else {
+        addLog("chat.response", "ok", latency);
+
+        const tags: MsgTag[] = [];
+        if (data.actionExecuted) {
+          tags.push({ label: "Policy: ALLOW", tone: "ok" });
+        }
+        if (data.noteCreated) {
+          tags.push({ label: "Note Saved", tone: "neutral" });
+        }
+
+        const assistantMsg: ChatMessage = {
+          id: `a-${Date.now()}`,
+          who: "assistant",
+          text: data.text,
+          time: nowHHMM(),
+          tags: tags.length ? tags : [{ label: "Response", tone: "neutral" }],
+          audioUrl: data.audioUrl,
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+
+        if (data.audioUrl) {
+          playAudio(data.audioUrl);
+        }
+
+        if (data.actionExecuted && data.updatedShipment) {
+          setShipments((prev) =>
+            prev.map((s) =>
+              s.shipment_id === data.updatedShipment.shipment_id
+                ? { ...s, ...data.updatedShipment }
+                : s
+            )
+          );
+          addLog("shipment.updated", "ok");
+        }
+      }
+    } catch (err) {
+      addLog("chat.error", "error");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `e-${Date.now()}`,
+          who: "assistant",
+          text: "Sorry, I couldn't connect. Check your connection.",
+          time: nowHHMM(),
+          tags: [{ label: "Network Error", tone: "warn" }],
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedShipment, policyEnv, addLog, playAudio]);
+
+  // STT - Web Speech API (Push-to-Talk with continuous capture)
+  const startSTT = useCallback(() => {
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      alert("Browser doesn't support speech recognition");
+      return;
+    }
+
+    // Reset transcript accumulators
+    transcriptRef.current = "";
+    interimRef.current = "";
+    lastSentRef.current = "";
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = "ar-SA";
+    recognition.continuous = true;       // Keep listening until we stop it
+    recognition.interimResults = true;   // Get real-time results
+
+    recognition.onresult = (event: any) => {
+      // Accumulate all final results
+      let finalTranscript = "";
+      let interimTranscript = "";
+
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript + " ";
+        } else {
+          interimTranscript += result[0].transcript;
+        }
+      }
+
+      // Store the accumulated final transcript
+      if (finalTranscript) {
+        transcriptRef.current = finalTranscript.trim();
+      }
+
+      // Also store interim results as fallback (in case final never arrives)
+      if (interimTranscript) {
+        interimRef.current = interimTranscript.trim();
+      }
+
+      addLog("stt.interim", "ok");
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("STT error:", event.error);
+      // Ignore "no-speech" and "aborted" errors (normal when user releases quickly)
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        addLog("stt.error", "error");
+      }
+    };
+
+    recognition.onend = () => {
+      // Use final transcript, or fall back to interim if final is empty
+      const finalText = transcriptRef.current.trim() || interimRef.current.trim();
+
+      if (finalText && finalText !== lastSentRef.current) {
+        lastSentRef.current = finalText;
+        addLog("stt.result", "ok");
+        sendMessage(finalText);
+      }
+
+      // Reset refs for next recording
+      transcriptRef.current = "";
+      interimRef.current = "";
+      setRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setRecording(true);
+    addLog("stt.start", "ok");
+  }, [addLog, sendMessage]);
+
+  const stopSTT = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      addLog("stt.stop", "ok");
+      // onend handler will capture the transcript and call sendMessage
+    }
+  }, [addLog]);
+
+  const newThread = useCallback(() => {
+    setMessages([]);
+    addLog("thread.new", "ok");
+  }, [addLog]);
+
+  const sendTyped = useCallback(() => {
+    if (draft.trim()) {
+      sendMessage(draft);
+      setDraft("");
+    }
+  }, [draft, sendMessage]);
+
+  const currentShipment = shipments.find((s) => s.shipment_id === selectedShipment);
+  const hintText = recording ? "Recording… Speak now" : "Press and hold to speak";
+
+  return (
+    <div
+      className="relative min-h-screen overflow-hidden text-white"
+      style={{
+        backgroundImage:
+          "radial-gradient(1200px 900px at 15% 20%, rgba(35,213,171,.18), transparent 55%), radial-gradient(900px 700px at 85% 18%, rgba(16,185,129,.12), transparent 55%), radial-gradient(900px 700px at 75% 85%, rgba(231,115,0,.10), transparent 55%), linear-gradient(180deg, #070b18, #0a1b3a)",
+      }}
+    >
+      <audio ref={audioRef} className="hidden" />
+
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.12]"
+        style={{
+          backgroundImage:
+            "conic-gradient(from 45deg at 20px 20px, rgba(255,255,255,.18) 0 10%, transparent 10% 25%, rgba(255,255,255,.12) 25% 35%, transparent 35% 50%, rgba(255,255,255,.10) 50% 60%, transparent 60% 75%, rgba(255,255,255,.12) 75% 85%, transparent 85% 100%)",
+          backgroundSize: "44px 44px",
+          mixBlendMode: "overlay",
+        }}
+      />
+
+      <div className="grid min-h-screen grid-cols-1 gap-4 p-4 lg:grid-cols-[340px_1fr] xl:grid-cols-[340px_1fr_360px] lg:p-6">
+        {/* LEFT PANEL */}
+        <aside className="hidden min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/5 shadow-[0_18px_50px_rgba(0,0,0,.45)] backdrop-blur-xl lg:flex">
+          <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-4">
+            <div>
+              <div className="text-[13px] font-bold">Context</div>
+              <div className="text-[12px] text-white/60">Shipment + Policies</div>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-white/70">SAM v2</span>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+            <ShipmentDropdown shipments={shipments} selected={selectedShipment} onSelect={(id) => { setSelectedShipment(id); setMessages([]); }} />
+
+            {/* Policy Environment Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-white/50">Policy:</span>
+              {(["dev", "staging", "prod"] as const).map((env) => (
+                <button
+                  key={env}
+                  type="button"
+                  onClick={() => setPolicyEnv(env)}
+                  className={cx(
+                    "rounded-lg border px-2.5 py-1 text-[11px] font-medium transition",
+                    policyEnv === env
+                      ? env === "prod"
+                        ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-300"
+                        : env === "staging"
+                        ? "border-amber-400/40 bg-amber-500/20 text-amber-300"
+                        : "border-sky-400/40 bg-sky-500/20 text-sky-300"
+                      : "border-white/10 bg-black/20 text-white/50 hover:border-white/20 hover:text-white/70"
+                  )}
+                >
+                  {env.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Orb speaking={speaking} />
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-bold">AQEL SAM</div>
+                <div className="text-[12px] text-white/60">Voice + Chat</div>
+              </div>
+            </div>
+
+            {currentShipment && (
+              <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="text-[13px] font-bold">Shipment Details</div>
+                  <span className={cx(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] text-white/90",
+                    currentShipment.status === "OUT_FOR_DELIVERY" ? "border-emerald-400/30 bg-emerald-500/15" : "border-orange-400/30 bg-orange-500/15"
+                  )}>
+                    <CheckCircle2 className="h-3 w-3" />
+                    {currentShipment.status === "OUT_FOR_DELIVERY" ? "Out for Delivery" : currentShipment.status}
+                  </span>
+                </div>
+                <div className="space-y-2 text-[12px] text-white/70">
+                  <KeyRow k="Shipment Number" v={currentShipment.shipment_id} mono />
+                  <KeyRow k="Arrival Time" v={formatTime(currentShipment.eta_ts)} mono />
+                  <KeyRow k="Address" v={currentShipment.address_text_ar || currentShipment.address_text} />
+                  <KeyRow k="Package Content" v={currentShipment.package_content || "Not specified"} />
+                  <KeyRow k="Notes" v={currentShipment.instructions || "None"} />
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-[13px] font-bold">Quick Policies</div>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-white/70">Policy Engine</span>
+              </div>
+              <div className="space-y-2 text-[12px] text-white/70">
+                <KeyRow k="Change Address" v="Allowed (Demo)" />
+                <KeyRow k="Reschedule" v="Allowed (Demo)" />
+                <KeyRow k="Update Notes" v="Allowed (Demo)" />
+              </div>
+            </div>
+
+            {currentShipment && (
+              <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="text-[13px] font-bold">Location</div>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-orange-400/30 bg-orange-500/15 px-2.5 py-1 text-[11px] text-white/90">
+                    <MapPin className="h-3 w-3" />
+                    GPS
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-[12px] text-white/75">
+                  <span className="tabular-nums">{currentShipment.geo_lat.toFixed(4)}, {currentShipment.geo_lng.toFixed(4)}</span>
+                  <span>Riyadh</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* CENTER */}
+        <main className="flex min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/5 shadow-[0_18px_50px_rgba(0,0,0,.45)] backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/5 px-4 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <BrandBadge />
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-bold">SAM v2 — Delivery Control</div>
+                <div className="truncate text-[12px] text-white/60">AQEL voice-first UI</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/70 sm:inline-flex">
+                <span className={cx("h-2 w-2 rounded-full shadow-[0_0_0_6px_rgba(16,185,129,.15)]", loading ? "bg-orange-400" : "bg-emerald-400")} />
+                {loading ? "Processing..." : "Connected"}
+              </span>
+              <TopButton icon={<Volume2 className="h-4 w-4" />} onClick={() => setSpeaking((s) => !s)} label={speaking ? "Speaking" : "Muted"} />
+              <TopButton icon={<Plus className="h-4 w-4" />} onClick={newThread} label="New" />
+            </div>
+          </div>
+
+          <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto px-4 py-4">
+            <div className="mb-4 flex justify-center">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/70">Today</span>
+            </div>
+            <div className="space-y-3">
+              {messages.map((m) => <MessageBubble key={m.id} m={m} onPlayAudio={playAudio} />)}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-white/60" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 border-t border-white/10 bg-white/5 px-4 py-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
+            <div className="flex min-w-0 items-center gap-3 text-[12px] text-white/70">
+              <WaveBars active={recording} tone={recording ? "orange" : "teal"} />
+              <span className="truncate">{hintText}</span>
+            </div>
+
+            <div className="flex items-center justify-center">
+              <PTTButton recording={recording} onStart={startSTT} onStop={stopSTT} />
+            </div>
+
+            <div className="flex items-center gap-2 md:justify-end">
+              <MiniPill label="Arabic STT" tone="ok" />
+              <MiniPill label="Sam v2" tone="ok" />
+            </div>
+
+            <div className="md:col-span-3">
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                <input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !loading) sendTyped(); }}
+                  placeholder="Type a message..."
+                  className="w-full bg-transparent text-[13px] text-white/90 placeholder:text-white/40 outline-none"
+                  disabled={loading || !selectedShipment}
+                />
+                <button
+                  type="button"
+                  onClick={sendTyped}
+                  disabled={loading || !selectedShipment}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/90 transition hover:border-white/20 hover:bg-white/10 disabled:opacity-50"
+                >
+                  <Send className="h-4 w-4" />
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* RIGHT PANEL */}
+        <aside className="hidden min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/10 bg-white/5 shadow-[0_18px_50px_rgba(0,0,0,.45)] backdrop-blur-xl xl:flex">
+          <div className="flex gap-2 border-b border-white/10 bg-white/5 p-3">
+            <TabButton active={tab === "tools"} onClick={() => setTab("tools")}>Tools</TabButton>
+            <TabButton active={tab === "db"} onClick={() => setTab("db")}>DB</TabButton>
+            <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>Logs</TabButton>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+            {tab === "tools" && (
+              <>
+                <ToolCard title="Mock Dispatch" state="READY" icon={<Wrench className="h-4 w-4" />} body="Phase 0 - all changes allowed" code={`{ "route_locked": false }`} />
+                <ToolCard title="Evidence Ledger" state="ON" icon={<ShieldCheck className="h-4 w-4" />} body="Audit trail for all actions" code={`{ "immutable": true }`} />
+                <ToolCard title="Policy Engine" state="DEMO" icon={<ShieldCheck className="h-4 w-4" />} body="Relaxed for demo" code={`{ "allow_all": true }`} />
+              </>
+            )}
+
+            {tab === "db" && (
+              <>
+                <ToolCard title="PostgreSQL (Neon)" state="CONNECTED" icon={<Database className="h-4 w-4" />} body="Shipments, Evidence, Notes" code={`tables: Shipment, EvidencePacket`} />
+                <ToolCard title="Shipments" state={`${shipments.length}`} icon={<Database className="h-4 w-4" />} body="Active records" code={shipments.map(s => s.shipment_id).join("\n")} />
+              </>
+            )}
+
+            {tab === "logs" && (
+              <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-[13px] font-bold">Runtime Logs</div>
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px]">LIVE</span>
+                </div>
+                <pre className="max-h-[400px] overflow-auto rounded-xl border border-white/10 bg-black/25 p-3 text-[11px] text-white/85">
+                  <code>
+                    {logs.length === 0 ? "No logs yet..." : logs.map((l, i) => (
+                      <div key={i} className={l.status === "error" ? "text-red-400" : "text-emerald-400"}>
+                        {l.time} {l.action} {l.status.toUpperCase()} {l.latency ? `(${l.latency}ms)` : ""}
+                      </div>
+                    ))}
+                  </code>
+                </pre>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}

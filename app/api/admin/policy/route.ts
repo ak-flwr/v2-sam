@@ -17,7 +17,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { reschedule_cutoff_minutes, max_geo_move_meters } = body
+    const { reschedule_cutoff_minutes, max_geo_move_meters, max_content_multiplier } = body
 
     const config = await prisma.policyConfig.findFirst()
 
@@ -26,6 +26,7 @@ export async function PUT(request: NextRequest) {
         data: {
           reschedule_cutoff_minutes,
           max_geo_move_meters,
+          max_content_multiplier: max_content_multiplier ?? 0,
         },
       })
       return NextResponse.json({ config: newConfig })
@@ -36,6 +37,7 @@ export async function PUT(request: NextRequest) {
       data: {
         reschedule_cutoff_minutes,
         max_geo_move_meters,
+        max_content_multiplier: max_content_multiplier ?? config.max_content_multiplier,
       },
     })
 

@@ -16,6 +16,7 @@ export interface NormalizedShipment {
     text: string
     text_ar?: string
   }
+  package_content?: string
   instructions?: string
   contact_phone_masked: string
   risk_tier: 'low' | 'medium' | 'high'
@@ -63,6 +64,7 @@ export interface PolicyConfig {
   reschedule_cutoff_minutes: number
   max_geo_move_meters: number
   trust_threshold_location: number
+  max_content_multiplier: number // 0=not allowed, 1-5=max multiplier for order changes
 }
 
 // Policy check result

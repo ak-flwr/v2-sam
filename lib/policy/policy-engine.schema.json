@@ -1,0 +1,336 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aqel.ai/schemas/policy-engine.schema.json",
+  "type": "object",
+  "required": [
+    "policy_id",
+    "policy_version",
+    "environment",
+    "active",
+    "effective_at",
+    "dials",
+    "guardrails",
+    "observability"
+  ],
+  "properties": {
+    "policy_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "staging",
+        "prod"
+      ]
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "effective_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "dials": {
+      "type": "object",
+      "required": [
+        "speech_pace",
+        "conversational_mode",
+        "clarification_budget",
+        "confirmation_rigor",
+        "autonomy_scope"
+      ],
+      "properties": {
+        "speech_pace": {
+          "type": "object",
+          "required": [
+            "ui_value"
+          ],
+          "properties": {
+            "ui_value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "tts_rate_multiplier": {
+              "type": "number",
+              "minimum": 0.85,
+              "maximum": 1.35
+            },
+            "pause_trim_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 300
+            },
+            "max_agent_utterance_seconds": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 30
+            }
+          },
+          "additionalProperties": false
+        },
+        "conversational_mode": {
+          "type": "object",
+          "required": [
+            "ui_value"
+          ],
+          "properties": {
+            "ui_value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "profile": {
+              "type": "string",
+              "enum": [
+                "concierge",
+                "balanced",
+                "transactional"
+              ]
+            },
+            "verbosity_budget_tokens": {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 260
+            },
+            "greeting_style": {
+              "type": "string",
+              "enum": [
+                "warm",
+                "standard",
+                "brief"
+              ]
+            },
+            "rapport_lines_allowed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        "clarification_budget": {
+          "type": "object",
+          "required": [
+            "ui_value"
+          ],
+          "properties": {
+            "ui_value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "max_clarifying_questions": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            },
+            "max_turns_before_action": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 20
+            },
+            "assume_defaults": {
+              "type": "boolean"
+            },
+            "defaults": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        "confirmation_rigor": {
+          "type": "object",
+          "required": [
+            "ui_value"
+          ],
+          "properties": {
+            "ui_value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "strict",
+                "risk_based",
+                "minimal"
+              ]
+            },
+            "confirm_fields_low_risk": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirm_fields_medium_risk": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirm_fields_high_risk": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "readback_style": {
+              "type": "string",
+              "enum": [
+                "full_readback",
+                "short_recap",
+                "none"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "autonomy_scope": {
+          "type": "object",
+          "required": [
+            "ui_value"
+          ],
+          "properties": {
+            "ui_value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "suggest_only",
+                "confirm_then_act",
+                "auto_act"
+              ]
+            },
+            "min_confidence_to_auto_act": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 0.95
+            },
+            "allowed_action_classes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "disallowed_action_classes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "guardrails": {
+      "type": "object",
+      "required": [
+        "pii_redaction_enabled",
+        "otp",
+        "compliance"
+      ],
+      "properties": {
+        "pii_redaction_enabled": {
+          "type": "boolean"
+        },
+        "otp": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "required_for_action_classes",
+            "risk_score_threshold"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "required_for_action_classes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "risk_score_threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "compliance": {
+          "type": "object",
+          "required": [
+            "hard_block_if_policy_violation",
+            "log_all_sensitive_requests"
+          ],
+          "properties": {
+            "hard_block_if_policy_violation": {
+              "type": "boolean"
+            },
+            "log_all_sensitive_requests": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "logistics_limits": {
+      "type": "object"
+    },
+    "observability": {
+      "type": "object",
+      "required": [
+        "kpi_targets",
+        "rework_window_hours",
+        "emit_events",
+        "sample_rate"
+      ],
+      "properties": {
+        "kpi_targets": {
+          "type": "object"
+        },
+        "rework_window_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
+        },
+        "emit_events": {
+          "type": "boolean"
+        },
+        "sample_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "audit": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,6 +1,3 @@
-/* Arabic font support - must come first */
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -23,11 +20,6 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
-}
-
-.arabic-text {
-  font-family: 'Cairo', sans-serif;
-  direction: rtl;
 }
 
 /* Pulse animation for avatar */

@@ -33,13 +33,23 @@ export function checkPolicy(
   const allowedActions = getAllowedActions(shipment, policyConfig)
 
   // Check if the requested action is in the allowed list
-  const actionAllowed = allowedActions.includes(action.type)
+  let actionAllowed = allowedActions.includes(action.type)
 
   // If not allowed, determine the specific denial reason
   let denialReason: string | undefined
 
   if (!actionAllowed) {
     denialReason = getDenialReason(shipment, action, policyConfig)
+  }
+
+  // Additional validation for UPDATE_LOCATION: check distance BEFORE allowing
+  if (actionAllowed && action.type === 'UPDATE_LOCATION') {
+    const distance = calculateGeoDistance(shipment.geo_pin, action.geo_pin)
+    const radiusCutoffMeters = policyConfig.max_geo_move_meters ?? 250
+    if (distance > radiusCutoffMeters) {
+      actionAllowed = false
+      denialReason = `Location change exceeds policy limit. Max: ${radiusCutoffMeters}m, requested: ${Math.round(distance)}m`
+    }
   }
 
   return {

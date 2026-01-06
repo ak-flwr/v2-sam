@@ -8,12 +8,15 @@ async function main() {
   // Create default policy config
   await prisma.policyConfig.upsert({
     where: { id: 'default' },
-    update: {},
+    update: {
+      max_content_multiplier: 0, // 0 = not allowed to modify content
+    },
     create: {
       id: 'default',
       reschedule_cutoff_minutes: 120,
       max_geo_move_meters: 250,
       trust_threshold_location: 0.8,
+      max_content_multiplier: 0, // 0 = not allowed to modify content
     },
   })
 
@@ -29,6 +32,7 @@ async function main() {
       address_text_ar: 'طريق الملك فهد، حي العليا، الرياض',
       geo_lat: 24.7136,
       geo_lng: 46.6753,
+      package_content: '١ × جهاز آيفون ١٦ برو ماكس، ١ × كفر حماية',
       instructions: 'Call upon arrival',
       contact_phone_masked: '+966 5X XXX 1234',
       risk_tier: 'low',
@@ -43,6 +47,7 @@ async function main() {
       address_text_ar: 'طريق الملك عبدالله، حي الملقا، الرياض',
       geo_lat: 24.7716,
       geo_lng: 46.6219,
+      package_content: '٣ × قميص رسمي، ٢ × بنطلون قماش',
       instructions: 'Leave at reception desk',
       contact_phone_masked: '+966 5X XXX 5678',
       risk_tier: 'medium',
@@ -57,6 +62,7 @@ async function main() {
       address_text_ar: 'طريق الأمير تركي بن عبدالعزيز الأول، حي حطين، الرياض',
       geo_lat: 24.7744,
       geo_lng: 46.6361,
+      package_content: '٢ × عطر توم فورد، ١ × ساعة أبل ألترا',
       instructions: 'Ring doorbell twice',
       contact_phone_masked: '+966 5X XXX 9012',
       risk_tier: 'low',
@@ -71,6 +77,7 @@ async function main() {
       address_text_ar: 'شارع العليا، حي العليا، الرياض',
       geo_lat: 24.6969,
       geo_lng: 46.6855,
+      package_content: '١ × لابتوب ماك بوك برو، ١ × شاحن، ١ × ماوس',
       instructions: 'Office building - 3rd floor',
       contact_phone_masked: '+966 5X XXX 3456',
       risk_tier: 'high',
@@ -85,6 +92,7 @@ async function main() {
       address_text_ar: 'شارع التخصصي، الرياض',
       geo_lat: 24.7045,
       geo_lng: 46.6724,
+      package_content: '٥ × كتب تقنية، ٢ × دفتر ملاحظات',
       instructions: null,
       contact_phone_masked: '+966 5X XXX 7890',
       risk_tier: 'low',
