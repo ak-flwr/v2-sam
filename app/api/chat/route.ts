@@ -49,6 +49,18 @@ async function emitTelemetry(event: {
   }
 }
 
+// Fast-path detection for simple queries (use Haiku)
+function isSimpleQuery(message: string): boolean {
+  const simplePatterns = [
+    /^(السلام|مرحبا|هلا|اهلا|صباح|مساء)/i,  // Greetings
+    /^(وين|فين|اين).*(طرد|شحن)/i,            // Where's my package
+    /^(شكرا|مع السلامة|باي)/i,               // Thanks/goodbye
+    /^(لا|لا شكرا|خلاص|تمام بس)/i,           // No thanks/done
+    /^(ايه|نعم|اوكي|طيب|تمام)$/i,            // Yes/OK (short confirmations)
+  ];
+  return simplePatterns.some(p => p.test(message.trim()));
+}
+
 // Prepare text for Arabic TTS - removes emojis and converts digits to Arabic words
 function prepareTextForTTS(text: string): string {
   // Arabic number words
@@ -292,11 +304,23 @@ const tools: Anthropic.Messages.Tool[] = [
 ]
 
 export async function POST(request: NextRequest) {
-  const startTime = Date.now()
+  const timings: Record<string, number> = {}
+  const startTime = performance.now()
   const conversationId = generateConversationId()
   let activePolicy: PolicyDocument | null = null
 
   try {
+    // Quick DB health check (fail fast if DB is down)
+    try {
+      await prisma.$queryRaw`SELECT 1`
+    } catch (dbError) {
+      console.error('[DB] Connection failed:', dbError)
+      return NextResponse.json(
+        { error: 'Database temporarily unavailable. Please try again in a few seconds.' },
+        { status: 503 }
+      )
+    }
+
     // Verify API keys are present
     const anthropicKey = process.env.ANTHROPIC_API_KEY
     const elevenLabsKey = process.env.ELEVENLABS_API_KEY
@@ -324,6 +348,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { message, shipment_id, conversation_id: existingConvId, env: requestEnv } = body
     const convId = existingConvId || conversationId
+
+    // Check if TTS should be skipped (for text-first response)
+    const skipTTS = request.nextUrl.searchParams.get('skipTTS') === 'true'
 
     // Environment selection: default to 'dev' for safety, allow override
     const validEnvs = ['dev', 'staging', 'prod'] as const
@@ -375,8 +402,15 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get current shipment context
-    const rawShipment = await omsClient.getShipment(shipment_id)
+    // Parallel fetch: shipment, route lock, conversation, policy config, intent detection
+    const [rawShipment, routeLocked, conversation, policyConfig, intent] = await Promise.all([
+      omsClient.getShipment(shipment_id),
+      dispatchClient.isRouteLocked(shipment_id),
+      getOrCreateConversation(shipment_id),
+      prisma.policyConfig.findFirst({ orderBy: { updated_at: 'desc' } }),
+      detectCustomerIntent(message),
+    ])
+    timings.parallelFetch = performance.now() - startTime
 
     if (!rawShipment) {
       return NextResponse.json(
@@ -388,20 +422,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const routeLocked = await dispatchClient.isRouteLocked(shipment_id)
     const shipment = normalizeShipment(rawShipment, routeLocked)
 
-    // Get or create conversation lifecycle
-    const conversation = await getOrCreateConversation(shipment_id)
-
-    // Detect intent and transition state
-    const intent = await detectCustomerIntent(message)
+    // Transition conversation state (depends on conversation + intent from parallel fetch)
     await transitionConversation(conversation.id, intent)
+    timings.conversationTransition = performance.now() - startTime
 
-    // Get policy for content modification rules
-    const policyConfig = await prisma.policyConfig.findFirst({
-      where: { id: 'default' },
-    })
     const maxContentMultiplier = policyConfig?.max_content_multiplier ?? 0
 
     // Build policy-driven style directive
@@ -447,10 +473,17 @@ Closing Behavior:
 - If status is CLOSED: customer already left, keep response minimal
 `
 
-    // Call Claude API with function calling
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
+    // Select model based on query complexity (Haiku for simple, Sonnet for complex)
+    const useHaiku = isSimpleQuery(message)
+    const selectedModel = useHaiku
+      ? 'claude-3-5-haiku-20241022'  // Fast for simple queries
+      : 'claude-sonnet-4-20250514'   // Full power for actions
+
+    // Call Claude API with streaming
+    timings.preClaudeCall = performance.now() - startTime
+    const stream = anthropic.messages.stream({
+      model: selectedModel,
+      max_tokens: useHaiku ? 512 : 1024,  // Smaller budget for simple queries
       system: SYSTEM_PROMPT + '\n\n' + shipmentContext + conversationStatusContext,
       messages: [
         {
@@ -467,14 +500,23 @@ Closing Behavior:
     let updatedShipment = null
     let noteCreated = false
 
-    // Process Claude's response
-    for (const content of response.content) {
-      if (content.type === 'text') {
-        responseText += (content as any).text
-      } else if (content.type === 'tool_use') {
+    // Stream text as it arrives
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        responseText += event.delta.text
+      }
+    }
+    timings.claudeResponse = performance.now() - startTime
+
+    // Get final message for complete tool_use handling
+    const finalMessage = await stream.finalMessage()
+
+    // Process tool calls from final message
+    for (const content of finalMessage.content) {
+      if (content.type === 'tool_use') {
         // Execute the requested action
-        const toolName = (content as any).name
-        const toolInput = (content as any).input
+        const toolName = content.name
+        const toolInput = content.input as Record<string, any>
 
         try {
           if (toolName === 'reschedule_delivery') {
@@ -578,6 +620,9 @@ Closing Behavior:
         }
       }
     }
+    if (actionExecuted) {
+      timings.toolExecution = performance.now() - startTime
+    }
 
     // If no tool was called and message seems out-of-scope, create a note
     if (!actionExecuted && isOutOfScope(message)) {
@@ -624,8 +669,35 @@ Closing Behavior:
       responseText = 'عذراً، ما قدرت أنفذ الطلب. ممكن أساعدك بشي ثاني؟'
     }
 
+    // Fast path: Return text immediately without TTS (client fetches audio separately)
+    if (skipTTS) {
+      timings.total = performance.now() - startTime
+      return NextResponse.json({
+        text: responseText,
+        audioUrl: null,
+        updatedShipment,
+        actionExecuted,
+        noteCreated,
+        evidenceId: actionResult?.evidence_id,
+        conversation_id: convId,
+        policy_applied: activePolicy ? {
+          policy_id: activePolicy.policy_id,
+          policy_version: activePolicy.policy_version,
+          environment: policyEnv,
+          conversational_profile: conversationalProfile,
+          autonomy_mode: autonomyMode,
+        } : null,
+        environment: policyEnv,
+        model_used: selectedModel,
+        fast_path: useHaiku,
+        skip_tts: true,
+        _timings: timings,
+      })
+    }
+
     // Generate Arabic TTS audio
     let audioUrl: string | undefined
+    timings.preTTS = performance.now() - startTime
 
     try {
       // Preprocess text for cleaner TTS (remove emojis, convert numbers to Arabic words)
@@ -667,8 +739,10 @@ Closing Behavior:
       const audioBuffer = Buffer.concat(chunks)
       const base64Audio = audioBuffer.toString('base64')
       audioUrl = `data:audio/mpeg;base64,${base64Audio}`
+      timings.ttsResponse = performance.now() - startTime
     } catch (error) {
       console.error('TTS generation error:', error)
+      timings.ttsResponse = performance.now() - startTime
       // Continue without audio if TTS fails
     }
 
@@ -689,7 +763,8 @@ Closing Behavior:
     }
 
     // Calculate metrics for this turn
-    const ahtSeconds = (Date.now() - startTime) / 1000
+    timings.total = performance.now() - startTime
+    console.log('[TIMING]', JSON.stringify(timings))
 
     return NextResponse.json({
       text: responseText,
@@ -707,6 +782,9 @@ Closing Behavior:
         autonomy_mode: autonomyMode,
       } : null,
       environment: policyEnv,
+      model_used: selectedModel,
+      fast_path: useHaiku,
+      _timings: timings,
     })
   } catch (error) {
     console.error('Chat API error:', error)

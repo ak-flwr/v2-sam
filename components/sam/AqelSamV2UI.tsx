@@ -447,7 +447,8 @@ export default function AqelSamV2UI() {
 
     const start = Date.now();
     try {
-      const res = await fetch("/api/chat", {
+      // Step 1: Fetch text immediately (skip TTS for faster response)
+      const res = await fetch("/api/chat?skipTTS=true", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), shipment_id: selectedShipment, env: policyEnv }),
@@ -478,18 +479,35 @@ export default function AqelSamV2UI() {
           tags.push({ label: "Note Saved", tone: "neutral" });
         }
 
+        // Step 2: Display text immediately (before audio loads)
+        const msgId = `a-${Date.now()}`;
         const assistantMsg: ChatMessage = {
-          id: `a-${Date.now()}`,
+          id: msgId,
           who: "assistant",
           text: data.text,
           time: nowHHMM(),
           tags: tags.length ? tags : [{ label: "Response", tone: "neutral" }],
-          audioUrl: data.audioUrl,
         };
         setMessages((prev) => [...prev, assistantMsg]);
 
-        if (data.audioUrl) {
-          playAudio(data.audioUrl);
+        // Step 3: Fetch audio in background (non-blocking)
+        if (data.text) {
+          fetch("/api/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: data.text }),
+          })
+            .then((ttsRes) => ttsRes.json())
+            .then(({ audioUrl }) => {
+              if (audioUrl) {
+                // Update message with audio URL
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === msgId ? { ...m, audioUrl } : m))
+                );
+                playAudio(audioUrl);
+              }
+            })
+            .catch((err) => console.error("TTS error:", err));
         }
 
         if (data.actionExecuted && data.updatedShipment) {
