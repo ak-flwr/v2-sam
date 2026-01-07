@@ -433,6 +433,7 @@ export default function AqelSamV2UI() {
 
   // Send message to API
   const sendMessage = useCallback(async (text: string) => {
+    console.log('[sendMessage] called with:', text);
     if (!text.trim() || !selectedShipment) return;
 
     const userMsg: ChatMessage = {
@@ -557,6 +558,10 @@ export default function AqelSamV2UI() {
     recognition.interimResults = true;   // Get real-time results
 
     recognition.onresult = (event: any) => {
+      console.log('[STT] onresult event:', {
+        resultLength: event.results.length,
+        isFinal: event.results[event.results.length - 1]?.isFinal
+      });
       // Accumulate all final results
       let finalTranscript = "";
       let interimTranscript = "";
@@ -592,6 +597,11 @@ export default function AqelSamV2UI() {
     };
 
     recognition.onend = () => {
+      console.log('[STT] onend:', {
+        transcriptRef: transcriptRef.current,
+        interimRef: interimRef.current,
+        lastSentRef: lastSentRef.current
+      });
       // Use final transcript, or fall back to interim if final is empty
       const finalText = transcriptRef.current.trim() || interimRef.current.trim();
 

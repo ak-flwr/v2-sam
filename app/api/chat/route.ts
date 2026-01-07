@@ -182,12 +182,26 @@ Response Style:
   2. Then ask: "هل تحتاج شي ثاني؟"
 - Keep confirmations brief but ALWAYS confirm the action was done
 - Don't echo system messages like "Notes updated" - use your own words in Arabic
+- When customer asks for multiple things, address EACH request separately
+- Example: Customer says "غير الكود وضاعف الكمية"
+  → You: "تمام، غيرت الكود. بالنسبة للكمية، سياسة النظام ما تسمح بتعديلها حالياً. هل تحتاج شي ثاني؟"
+- ALWAYS acknowledge what succeeded AND what failed
+- NEVER ignore part of the customer's request
 
 Conversation Flow (critical):
+- NEVER greet the customer again if you've already greeted them in this conversation
+- If conversation status is ACTIVE or RESOLVED, skip the greeting and go straight to helping
+- Only greet on the very first message when status is OPEN
 - ALWAYS ask "هل تحتاج شي ثاني؟" after completing any action
 - If customer says no/thanks (لا، شكراً، خلاص، تمام بس): close with "شكراً لتواصلك، مع السلامة!"
 - If customer asks something else: help them, then ask again
 - Never leave the customer hanging - either help more or close the conversation
+
+Multiple Requests in One Message:
+- If customer asks for multiple things in one message, process ALL of them
+- Confirm each action separately: "تمام، غيرت الكود. بالنسبة للكمية، ما نقدر نغيرها حالياً."
+- Always end with "هل تحتاج شي ثاني؟" even if some actions failed
+- Never leave the customer without knowing what happened to EACH request
 
 Examples:
 - Customer: "غير كود الدخول إلى 772"
@@ -415,7 +429,7 @@ export async function POST(request: NextRequest) {
     if (!rawShipment) {
       return NextResponse.json(
         {
-          text: 'Sorry, I couldn\'t find the shipment. It seems the database needs seeding. Please contact support.',
+          text: 'عذراً، ما قدرت ألاقي الشحنة. تواصل مع الدعم الفني.',
           error: 'Shipment not found - database may need seeding'
         },
         { status: 404 }
@@ -499,6 +513,8 @@ Closing Behavior:
     let actionResult: any = null
     let updatedShipment = null
     let noteCreated = false
+    // Accumulate results from multiple tool calls
+    const actionResults: { tool: string; success: boolean; message: string }[] = []
 
     // Stream text as it arrives
     for await (const event of stream) {
@@ -543,7 +559,11 @@ Closing Behavior:
             )
 
             actionExecuted = true
-            // UI badges show action result - no need to append system confirmation
+            if (actionResult?.success) {
+              actionResults.push({ tool: 'reschedule', success: true, message: 'تمام، غيرت موعد التوصيل' })
+            } else {
+              actionResults.push({ tool: 'reschedule', success: false, message: 'ما قدرت أغير الموعد' })
+            }
           } else if (toolName === 'update_instructions') {
             actionResult = await executeAction(
               {
@@ -554,7 +574,11 @@ Closing Behavior:
             )
 
             actionExecuted = true
-            // UI badges show action result - no need to append system confirmation
+            if (actionResult?.success) {
+              actionResults.push({ tool: 'update_instructions', success: true, message: 'تمام، حدثت التعليمات' })
+            } else {
+              actionResults.push({ tool: 'update_instructions', success: false, message: 'ما قدرت أحدث التعليمات' })
+            }
           } else if (toolName === 'update_location') {
             // Phase 0 Demo: Accept any address without geocoding
             // Use existing coordinates with small offset for demo purposes
@@ -571,7 +595,11 @@ Closing Behavior:
             )
 
             actionExecuted = true
-            // UI badges show action result - no need to append system confirmation
+            if (actionResult?.success) {
+              actionResults.push({ tool: 'update_location', success: true, message: 'تمام، غيرت الموقع' })
+            } else {
+              actionResults.push({ tool: 'update_location', success: false, message: 'ما قدرت أغير الموقع' })
+            }
           } else if (toolName === 'modify_content') {
             // Check policy for content modification
             const requestedMultiplier = toolInput.multiplier || 2
@@ -586,7 +614,7 @@ Closing Behavior:
                 },
               })
               noteCreated = true
-              responseText += `\n\nSorry, system policy doesn't allow modifying order content at the moment. I've logged your request for the sales team and they'll contact you soon.`
+              actionResults.push({ tool: 'modify_content', success: false, message: 'سياسة النظام ما تسمح بتعديل الكمية حالياً، سجلت طلبك للمتابعة' })
             } else if (requestedMultiplier <= maxContentMultiplier) {
               // Allowed - create a note for processing
               await prisma.shipmentNote.create({
@@ -597,7 +625,7 @@ Closing Behavior:
                 },
               })
               noteCreated = true
-              responseText += `\n\nQuantity multiplication request (${requestedMultiplier}x) has been logged. The sales team will contact you for confirmation and billing.`
+              actionResults.push({ tool: 'modify_content', success: true, message: 'تم تسجيل طلب تعديل الكمية' })
             } else {
               // Multiplier too high
               await prisma.shipmentNote.create({
@@ -608,14 +636,14 @@ Closing Behavior:
                 },
               })
               noteCreated = true
-              responseText += `\n\nThe maximum multiplier is ${maxContentMultiplier}x. I've logged your request for the sales team to review.`
+              actionResults.push({ tool: 'modify_content', success: false, message: `أقصى حد للمضاعفة هو ${maxContentMultiplier}x، سجلت طلبك للمراجعة` })
             }
             actionExecuted = true
           }
         } catch (error) {
           console.error('Action execution error:', error)
-          responseText += `\n\nAn error occurred: ${
-            error instanceof Error ? error.message : 'Unknown error'
+          responseText += `\n\nعذراً، صار خطأ: ${
+            error instanceof Error ? error.message : 'خطأ غير معروف'
           }`
         }
       }
@@ -636,37 +664,37 @@ Closing Behavior:
       noteCreated = true
     }
 
-    // Get updated shipment if action was successful
-    if (actionExecuted && actionResult?.success) {
-      // Transition conversation to RESOLVED after action completes
-      await transitionConversation(conversation.id, 'ACTION_COMPLETED')
-      await incrementActionsTaken(conversation.id)
+    // Build combined response from all action results
+    if (actionResults.length > 0) {
+      const messages = actionResults.map(r => r.message)
+      responseText = messages.join('. ') + '. هل تحتاج شي ثاني؟'
 
-      // If Claude only returned tool_use without text, add Arabic confirmation
-      if (!responseText.trim()) {
-        responseText = 'تمام، خلصت الطلب. هل تحتاج شي ثاني؟'
+      // Track if ANY action succeeded for state transition
+      const anySuccess = actionResults.some(r => r.success)
+      if (anySuccess) {
+        await transitionConversation(conversation.id, 'ACTION_COMPLETED')
+        await incrementActionsTaken(conversation.id)
+
+        // Fetch updated shipment
+        const updatedRaw = await omsClient.getShipment(shipment_id)
+        const updatedLocked = await dispatchClient.isRouteLocked(shipment_id)
+        const normalized = normalizeShipment(updatedRaw, updatedLocked)
+        updatedShipment = {
+          shipment_id: normalized.shipment_id,
+          status: normalized.status,
+          eta: normalized.eta.toISOString(),
+          window: {
+            start: normalized.window.start.toISOString(),
+            end: normalized.window.end.toISOString(),
+          },
+          address: normalized.address,
+          geo_pin: normalized.geo_pin,
+          instructions: normalized.instructions,
+        }
       }
-
-      const updatedRaw = await omsClient.getShipment(shipment_id)
-      const updatedLocked = await dispatchClient.isRouteLocked(shipment_id)
-      const normalized = normalizeShipment(updatedRaw, updatedLocked)
-      updatedShipment = {
-        shipment_id: normalized.shipment_id,
-        status: normalized.status,
-        eta: normalized.eta.toISOString(),
-        window: {
-          start: normalized.window.start.toISOString(),
-          end: normalized.window.end.toISOString(),
-        },
-        address: normalized.address,
-        geo_pin: normalized.geo_pin,
-        instructions: normalized.instructions,
-      }
-    }
-
-    // If action was attempted but failed, add Arabic error message
-    if (actionExecuted && !actionResult?.success && !responseText.trim()) {
-      responseText = 'عذراً، ما قدرت أنفذ الطلب. ممكن أساعدك بشي ثاني؟'
+    } else if (!responseText.trim()) {
+      // No tools called and Claude didn't provide text
+      responseText = 'كيف أقدر أساعدك؟'
     }
 
     // Fast path: Return text immediately without TTS (client fetches audio separately)

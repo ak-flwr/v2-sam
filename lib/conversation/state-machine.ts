@@ -19,8 +19,9 @@ const transitions: StateTransition[] = [
   { from: 'OPEN', event: 'MESSAGE_RECEIVED', to: 'ACTIVE' },
   { from: 'OPEN', event: 'ACTION_COMPLETED', to: 'ACTIVE' },
 
-  // Active -> Resolved (customer says they're satisfied)
+  // Active -> Resolved (customer says they're satisfied or goodbye)
   { from: 'ACTIVE', event: 'CUSTOMER_SATISFIED', to: 'RESOLVED' },
+  { from: 'ACTIVE', event: 'CUSTOMER_GOODBYE', to: 'CLOSED' }, // direct close on goodbye
   { from: 'ACTIVE', event: 'ACTION_COMPLETED', to: 'ACTIVE' }, // stays active
 
   // Resolved -> Closed (customer says goodbye)
