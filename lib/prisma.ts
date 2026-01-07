@@ -1,16 +1,23 @@
+import { Pool, neonConfig } from '@neondatabase/serverless'
 import { PrismaNeon } from '@prisma/adapter-neon'
 import { PrismaClient } from '@prisma/client'
+
+neonConfig.fetchConnectionCache = true
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-function createPrismaClient(): PrismaClient {
+function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL
+
   if (!connectionString) {
-    throw new Error('DATABASE_URL environment variable is not set')
+    // Return a dummy client during build time
+    // This prevents build errors when DATABASE_URL isn't available
+    console.warn('DATABASE_URL not set, using dummy Prisma client')
+    return new PrismaClient()
   }
-  // PrismaNeon now takes PoolConfig directly, not a Pool instance
+
   const adapter = new PrismaNeon({ connectionString })
   return new PrismaClient({ adapter })
 }
