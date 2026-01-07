@@ -363,6 +363,7 @@ export default function AqelSamV2UI() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [sttReady, setSttReady] = useState(false);  // True when actually listening
   const [tab, setTab] = useState<RightTab>("tools");
   const [draft, setDraft] = useState("");
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -419,6 +420,19 @@ export default function AqelSamV2UI() {
   // Add log entry
   const addLog = useCallback((action: string, status: "ok" | "error", latency?: number) => {
     setLogs((prev) => [...prev.slice(-20), { time: nowHHMM(), action, status, latency }]);
+  }, []);
+
+  // Pre-initialize Speech Recognition on mount
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SR();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'ar-SA';
+      recognitionRef.current = recognition;
+      console.log('[STT] Pre-initialized recognition object');
+    }
   }, []);
 
   // Play TTS audio
@@ -541,21 +555,24 @@ export default function AqelSamV2UI() {
 
   // STT - Web Speech API (Push-to-Talk with continuous capture)
   const startSTT = useCallback(() => {
-    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+    if (!recognitionRef.current) {
       alert("Browser doesn't support speech recognition");
       return;
     }
+
+    const recognition = recognitionRef.current;
 
     // Reset transcript accumulators
     transcriptRef.current = "";
     interimRef.current = "";
     lastSentRef.current = "";
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = "ar-SA";
-    recognition.continuous = true;       // Keep listening until we stop it
-    recognition.interimResults = true;   // Get real-time results
+    // Set up handlers fresh each time (they may reference current state)
+    recognition.onstart = () => {
+      console.log('[STT] Actually listening now');
+      setSttReady(true);  // Now truly ready to receive speech
+      addLog("stt.ready", "ok");
+    };
 
     recognition.onresult = (event: any) => {
       console.log('[STT] onresult event:', {
@@ -611,15 +628,17 @@ export default function AqelSamV2UI() {
         sendMessage(finalText);
       }
 
-      // Reset refs for next recording
+      // Reset refs and state for next recording
       transcriptRef.current = "";
       interimRef.current = "";
       setRecording(false);
+      setSttReady(false);
     };
 
-    recognitionRef.current = recognition;
-    recognition.start();
+    // Show "warming up" state immediately, then "listening" when onstart fires
     setRecording(true);
+    setSttReady(false);
+    recognition.start();
     addLog("stt.start", "ok");
   }, [addLog, sendMessage]);
 
@@ -644,7 +663,9 @@ export default function AqelSamV2UI() {
   }, [draft, sendMessage]);
 
   const currentShipment = shipments.find((s) => s.shipment_id === selectedShipment);
-  const hintText = recording ? "Recording… Speak now" : "Press and hold to speak";
+  const hintText = recording
+    ? (sttReady ? "Recording… Speak now" : "Warming up…")
+    : "Press and hold to speak";
 
   return (
     <div

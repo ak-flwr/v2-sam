@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head><title>STT Timing Test</title></head>
+<body>
+<h1>STT Timing Test</h1>
+<button id="start">Hold to Speak</button>
+<div id="status">Ready</div>
+<div id="results"></div>
+<script>
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const r = new SR();
+r.continuous = true;
+r.interimResults = true;
+r.lang = 'ar-SA';
+
+const status = document.getElementById('status');
+const results = document.getElementById('results');
+const btn = document.getElementById('start');
+
+let startTime;
+
+r.onstart = () => {
+  const delay = Date.now() - startTime;
+  status.textContent = `Listening (started in ${delay}ms)`;
+};
+
+r.onresult = (e) => {
+  let interim = '', final = '';
+  for (let i = 0; i < e.results.length; i++) {
+    if (e.results[i].isFinal) {
+      final += e.results[i][0].transcript;
+    } else {
+      interim += e.results[i][0].transcript;
+    }
+  }
+  results.innerHTML = `<b>Final:</b> ${final}<br><b>Interim:</b> ${interim}`;
+};
+
+r.onend = () => status.textContent = 'Stopped';
+
+btn.onmousedown = () => {
+  startTime = Date.now();
+  status.textContent = 'Starting...';
+  r.start();
+};
+
+btn.onmouseup = () => r.stop();
+</script>
+</body>
+</html>
