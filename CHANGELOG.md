@@ -60,3 +60,17 @@
 ### Deployment
 - Production live at https://snd.aqel.ai
 - Auto-deploy from GitHub main branch
+
+## v2.4.1 (2026-01-07)
+### Fixed
+- **STT word dropping** - First 6-7 words no longer lost when speaking early
+
+### Changed
+- **Continuous background listening** - Recognition always active, toggle capture mode
+- **3-second rolling buffer** - Captures speech from before button press
+- **Simplified architecture** - Removed start/stop cycle, -17 lines of code
+
+### Technical
+- `backgroundBufferRef` stores timestamped speech segments
+- `isCapturingRef` toggles capture without restarting recognition
+- Auto-restart on recognition end for 100% uptime
