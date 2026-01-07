@@ -293,3 +293,39 @@ curl https://sam-v2.aqel.ai/api/admin/notes
 
 *Last updated: 2025-12-28*
 *Demo ready for production deployment*
+
+## Updated Test Scenarios (v2.3.2)
+
+### Multi-Action Test
+Say: "غير كود الدخول إلى 555 وضاعف الكمية"
+Expected: 
+- Code change succeeds
+- Quantity change denied (policy)
+- Both outcomes reported in Arabic
+- Ends with "هل تحتاج شي ثاني؟"
+
+### Conversation Flow Test
+1. Say: "السلام عليكم" → Greeting (OPEN → ACTIVE)
+2. Say: "غير التعليمات إلى اتصل قبل الوصول" → Action confirmed + follow-up
+3. Say: "لا شكراً" → Closes with goodbye (ACTIVE → CLOSED)
+
+### Latency Test
+- Simple greeting: ~2.5s (Haiku fast-path)
+- Action request: ~4-5s (Sonnet + tool)
+- Text appears before audio (split response)
+
+### Admin Panel
+- **Conversations tab**: View all conversations with status
+- **Analytics tab**: Funnel visualization (OPEN → ACTIVE → RESOLVED → CLOSED)
+- **Evidence Ledger**: Immutable audit trail
+
+## API Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| POST /api/chat | Main chat (full response) |
+| POST /api/chat?skipTTS=true | Text only (fast) |
+| POST /api/tts | Standalone TTS |
+| GET /api/admin/shipments | List shipments |
+| GET /api/admin/conversations | List conversations |
+| GET /api/admin/analytics/conversations | Funnel metrics |
