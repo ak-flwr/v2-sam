@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.3.3 (2026-01-07)
+### Fixed
+- STT pre-warming: Recognition object initialized on mount, reused on each press
+- Eliminated dropped first words from cold start delay (200-500ms savings)
+- Added visual feedback: "Warming up..." → "Recording... Speak now"
+- Users now know exactly when to start speaking
+
+### UX
+- sttReady state tracks actual listening status
+- Recording indicator only shows green when truly ready
+
 ## v2.3.2 (2026-01-07)
 ### Fixed
 - Multi-action handling: all results now reported (not just last one)
