@@ -4,24 +4,26 @@ import { PrismaClient } from '@prisma/client'
 
 neonConfig.fetchConnectionCache = true
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
+let prismaInstance: PrismaClient | null = null
 
-function createPrismaClient() {
+export function getPrisma(): PrismaClient {
+  if (prismaInstance) return prismaInstance
+  
   const connectionString = process.env.DATABASE_URL
-
+  
   if (!connectionString) {
-    // Return a dummy client during build time
-    // This prevents build errors when DATABASE_URL isn't available
-    console.warn('DATABASE_URL not set, using dummy Prisma client')
-    return new PrismaClient()
+    throw new Error('DATABASE_URL environment variable is not set')
   }
-
+  
   const adapter = new PrismaNeon({ connectionString })
-  return new PrismaClient({ adapter })
+  prismaInstance = new PrismaClient({ adapter })
+  
+  return prismaInstance
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient()
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+// For backward compatibility - proxy delays initialization until first use
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_, prop) {
+    return getPrisma()[prop as keyof PrismaClient]
+  }
+})
