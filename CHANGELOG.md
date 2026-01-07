@@ -46,3 +46,17 @@
 - Microphone permissions policy
 - STT language set to ar-SA
 - Policy engine radius check enforcement
+
+## v2.4.0 (2026-01-07)
+### Fixed
+- Vercel build errors with Prisma (lazy-load via Proxy)
+- Neon database connection (serverless adapter for HTTPS)
+- Environment variables configuration
+
+### Changed
+- PrismaNeon adapter updated to v7.2.0 API
+- Removed force-dynamic workaround in favor of Proxy pattern
+
+### Deployment
+- Production live at https://snd.aqel.ai
+- Auto-deploy from GitHub main branch
