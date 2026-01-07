@@ -327,3 +327,56 @@ This test:
 - Swappable implementations
 - Type-safe contracts
 - Comprehensive documentation
+
+## Conversation Lifecycle (v2.3.0+)
+
+### State Machine
+
+```
+OPEN → ACTIVE → RESOLVED → CLOSED
+         ↓           ↓
+         └───────────┴──→ CLOSED (direct goodbye)
+         ↓
+      REOPENED → ACTIVE
+```
+
+### States
+| State | Trigger | Behavior |
+|-------|---------|----------|
+| OPEN | New conversation | Greeting allowed |
+| ACTIVE | Message received / Action completed | No re-greeting, help customer |
+| RESOLVED | Customer satisfied | Ask if anything else |
+| CLOSED | Customer goodbye / 24h timeout | Conversation ended |
+| REOPENED | New request after closed | Back to helping |
+
+### Location
+- `/lib/conversation/state-machine.ts` - Transition logic
+- `/lib/conversation/service.ts` - DB operations + intent detection
+
+## Latency Optimizations (v2.3.1+)
+
+| Optimization | Impact |
+|--------------|--------|
+| Parallel DB queries | -150ms |
+| Haiku fast-path (simple queries) | -1.5s |
+| Split text/audio response | -2s perceived |
+| Streaming Claude response | Better UX |
+
+### Fast-Path Detection
+Simple Arabic patterns (greetings, thanks, goodbye) route to `claude-3-5-haiku` for faster response.
+
+### Split Response Flow
+1. `/api/chat?skipTTS=true` → Text in ~2.5s
+2. `/api/tts` → Audio in background ~1s
+3. Frontend shows text immediately, plays audio when ready
+
+## Multi-Action Handling (v2.3.2+)
+
+When customer requests multiple actions:
+1. Each tool pushes result to `actionResults[]`
+2. Response combines all: success messages + failure messages
+3. Always ends with "هل تحتاج شي ثاني؟"
+
+Example:
+- Input: "غير الكود وضاعف الكمية"
+- Output: "تمام، حدثت التعليمات. سياسة النظام ما تسمح بتعديل الكمية. هل تحتاج شي ثاني؟"
