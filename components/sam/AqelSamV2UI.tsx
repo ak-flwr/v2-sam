@@ -378,6 +378,10 @@ export default function AqelSamV2UI() {
   const transcriptRef = useRef<string>("");
   const interimRef = useRef<string>("");
   const lastSentRef = useRef<string>("");
+  const backgroundBufferRef = useRef<{text: string; timestamp: number}[]>([]);  // Rolling buffer
+  const isCapturingRef = useRef(false);          // True when button held
+  const capturedTextRef = useRef<string>("");    // Text captured during this press
+  const BUFFER_DURATION_MS = 3000;               // 3 second lookback buffer
 
   // Fetch shipments on mount
   useEffect(() => {
@@ -422,17 +426,63 @@ export default function AqelSamV2UI() {
     setLogs((prev) => [...prev.slice(-20), { time: nowHHMM(), action, status, latency }]);
   }, []);
 
-  // Pre-initialize Speech Recognition on mount
+  // Initialize and start continuous background listening
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SR();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'ar-SA';
-      recognitionRef.current = recognition;
-      console.log('[STT] Pre-initialized recognition object');
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      console.warn('[STT] Speech recognition not supported');
+      return;
     }
+
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'ar-SA';
+
+    recognition.onstart = () => {
+      console.log('[STT] Continuous listening active');
+      setSttReady(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const now = Date.now();
+      let latestTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        latestTranscript += event.results[i][0].transcript;
+      }
+      if (latestTranscript.trim()) {
+        backgroundBufferRef.current.push({ text: latestTranscript.trim(), timestamp: now });
+        const cutoff = now - BUFFER_DURATION_MS;
+        backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
+        if (isCapturingRef.current) {
+          capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(' ');
+        }
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        console.error('[STT] Error:', event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      if (recognitionRef.current) {
+        setTimeout(() => {
+          try { recognition.start(); } catch (e) { /* ignore */ }
+        }, 100);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      }
+    };
   }, []);
 
   // Play TTS audio
@@ -554,101 +604,34 @@ export default function AqelSamV2UI() {
   }, [selectedShipment, policyEnv, addLog, playAudio]);
 
   // STT - Web Speech API (Push-to-Talk with continuous capture)
+
+  // Start capturing speech (recognition already running)
   const startSTT = useCallback(() => {
-    if (!recognitionRef.current) {
-      alert("Browser doesn't support speech recognition");
-      return;
-    }
-
-    const recognition = recognitionRef.current;
-
-    // Reset transcript accumulators
-    transcriptRef.current = "";
-    interimRef.current = "";
-    lastSentRef.current = "";
-
-    // Set up handlers fresh each time (they may reference current state)
-    recognition.onstart = () => {
-      console.log('[STT] Actually listening now');
-      setSttReady(true);  // Now truly ready to receive speech
-      addLog("stt.ready", "ok");
-    };
-
-    recognition.onresult = (event: any) => {
-      console.log('[STT] onresult event:', {
-        resultLength: event.results.length,
-        isFinal: event.results[event.results.length - 1]?.isFinal
-      });
-      // Accumulate all final results
-      let finalTranscript = "";
-      let interimTranscript = "";
-
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalTranscript += result[0].transcript + " ";
-        } else {
-          interimTranscript += result[0].transcript;
-        }
-      }
-
-      // Store the accumulated final transcript
-      if (finalTranscript) {
-        transcriptRef.current = finalTranscript.trim();
-      }
-
-      // Also store interim results as fallback (in case final never arrives)
-      if (interimTranscript) {
-        interimRef.current = interimTranscript.trim();
-      }
-
-      addLog("stt.interim", "ok");
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("STT error:", event.error);
-      // Ignore "no-speech" and "aborted" errors (normal when user releases quickly)
-      if (event.error !== "no-speech" && event.error !== "aborted") {
-        addLog("stt.error", "error");
-      }
-    };
-
-    recognition.onend = () => {
-      console.log('[STT] onend:', {
-        transcriptRef: transcriptRef.current,
-        interimRef: interimRef.current,
-        lastSentRef: lastSentRef.current
-      });
-      // Use final transcript, or fall back to interim if final is empty
-      const finalText = transcriptRef.current.trim() || interimRef.current.trim();
-
-      if (finalText && finalText !== lastSentRef.current) {
-        lastSentRef.current = finalText;
-        addLog("stt.result", "ok");
-        sendMessage(finalText);
-      }
-
-      // Reset refs and state for next recording
-      transcriptRef.current = "";
-      interimRef.current = "";
-      setRecording(false);
-      setSttReady(false);
-    };
-
-    // Show "warming up" state immediately, then "listening" when onstart fires
+    // Grab any recent speech from buffer (captures "early" words)
+    capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(' ');
+    isCapturingRef.current = true;
     setRecording(true);
-    setSttReady(false);
-    recognition.start();
+    console.log('[STT] Capturing started, buffer:', capturedTextRef.current);
     addLog("stt.start", "ok");
-  }, [addLog, sendMessage]);
-
-  const stopSTT = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      addLog("stt.stop", "ok");
-      // onend handler will capture the transcript and call sendMessage
-    }
   }, [addLog]);
+
+  // Stop capturing and send the accumulated text
+  const stopSTT = useCallback(() => {
+    isCapturingRef.current = false;
+    setRecording(false);
+
+    const text = capturedTextRef.current.trim();
+    console.log('[STT] Capturing stopped, text:', text);
+
+    if (text && text !== lastSentRef.current) {
+      lastSentRef.current = text;
+      sendMessage(text);
+      addLog("stt.result", "ok");
+    }
+
+    capturedTextRef.current = "";
+    addLog("stt.stop", "ok");
+  }, [addLog, sendMessage]);
 
   const newThread = useCallback(() => {
     setMessages([]);
