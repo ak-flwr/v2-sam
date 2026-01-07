@@ -382,6 +382,7 @@ export default function AqelSamV2UI() {
   const isCapturingRef = useRef(false);          // True when button held
   const capturedTextRef = useRef<string>("");    // Text captured during this press
   const BUFFER_DURATION_MS = 3000;               // 3 second lookback buffer
+  const lastResultIndexRef = useRef<number>(0);             // Track last processed result
 
   // Fetch shipments on mount
   useEffect(() => {
@@ -446,17 +447,24 @@ export default function AqelSamV2UI() {
 
     recognition.onresult = (event: any) => {
       const now = Date.now();
-      let latestTranscript = '';
+
+      // Only process final results to avoid duplicates
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        latestTranscript += event.results[i][0].transcript;
-      }
-      if (latestTranscript.trim()) {
-        backgroundBufferRef.current.push({ text: latestTranscript.trim(), timestamp: now });
-        const cutoff = now - BUFFER_DURATION_MS;
-        backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
-        if (isCapturingRef.current) {
-          capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(' ');
+        const result = event.results[i];
+        const transcript = result[0].transcript.trim();
+
+        if (result.isFinal && transcript) {
+          // Final result - add to buffer
+          backgroundBufferRef.current.push({ text: transcript, timestamp: now });
+          const cutoff = now - BUFFER_DURATION_MS;
+          backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
+          console.log("[STT] Final:", transcript);
         }
+      }
+
+      // Update captured text if recording
+      if (isCapturingRef.current) {
+        capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(" ");
       }
     };
 
