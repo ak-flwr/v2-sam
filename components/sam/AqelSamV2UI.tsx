@@ -447,17 +447,27 @@ export default function AqelSamV2UI() {
 
     recognition.onresult = (event: any) => {
       const now = Date.now();
-      let latestTranscript = '';
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        latestTranscript += event.results[i][0].transcript;
-      }
-      if (latestTranscript.trim()) {
-        backgroundBufferRef.current.push({ text: latestTranscript.trim(), timestamp: now });
-        const cutoff = now - BUFFER_DURATION_MS;
-        backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
-        if (isCapturingRef.current) {
-          capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(' ');
+        const result = event.results[i];
+        const transcript = result[0].transcript.trim();
+
+        if (result.isFinal && transcript) {
+          // Final result - add to buffer
+          backgroundBufferRef.current.push({ text: transcript, timestamp: now });
+          const cutoff = now - BUFFER_DURATION_MS;
+          backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
+          interimRef.current = '';
+        } else if (transcript) {
+          // Interim - track separately (replaced each time)
+          interimRef.current = transcript;
         }
+      }
+
+      // Update captured text: finals + current interim
+      if (isCapturingRef.current) {
+        const finals = backgroundBufferRef.current.map(e => e.text).join(' ');
+        capturedTextRef.current = (finals + ' ' + interimRef.current).trim();
       }
     };
 
@@ -608,8 +618,10 @@ export default function AqelSamV2UI() {
 
   // Start capturing speech (recognition already running)
   const startSTT = useCallback(() => {
-    // Grab any recent speech from buffer (captures "early" words)
-    capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(' ');
+    // Clear buffer and start fresh
+    backgroundBufferRef.current = [];
+    interimRef.current = '';
+    capturedTextRef.current = '';
     isCapturingRef.current = true;
     setRecording(true);
     console.log('[STT] Capturing started, buffer:', capturedTextRef.current);
