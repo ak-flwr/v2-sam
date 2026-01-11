@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SAM v2 - Delivery Control Link",
+  title: "SND Delivery Control Link v2.5.1",
   description: "Resolution Engine for last-mile delivery control",
 };
 
