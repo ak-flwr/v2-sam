@@ -447,24 +447,17 @@ export default function AqelSamV2UI() {
 
     recognition.onresult = (event: any) => {
       const now = Date.now();
-
-      // Only process final results to avoid duplicates
+      let latestTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const transcript = result[0].transcript.trim();
-
-        if (result.isFinal && transcript) {
-          // Final result - add to buffer
-          backgroundBufferRef.current.push({ text: transcript, timestamp: now });
-          const cutoff = now - BUFFER_DURATION_MS;
-          backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
-          console.log("[STT] Final:", transcript);
-        }
+        latestTranscript += event.results[i][0].transcript;
       }
-
-      // Update captured text if recording
-      if (isCapturingRef.current) {
-        capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(" ");
+      if (latestTranscript.trim()) {
+        backgroundBufferRef.current.push({ text: latestTranscript.trim(), timestamp: now });
+        const cutoff = now - BUFFER_DURATION_MS;
+        backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
+        if (isCapturingRef.current) {
+          capturedTextRef.current = backgroundBufferRef.current.map(e => e.text).join(' ');
+        }
       }
     };
 
