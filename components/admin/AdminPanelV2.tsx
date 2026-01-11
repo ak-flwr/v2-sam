@@ -1107,7 +1107,7 @@ function LoginScreen({ onLogin, theme }: { onLogin: () => void; theme: "dark" | 
 
 export default function AdminPanelV2() {
   const [theme, setTheme] = useState<"dark" | "bright">("dark");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [tab, setTab] = useState<TabKey>("shipments");
   const [query, setQuery] = useState("");
   const [notesFilter, setNotesFilter] = useState<"ALL" | "RESOLVED" | "UNRESOLVED">("UNRESOLVED");
