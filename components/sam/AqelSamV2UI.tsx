@@ -378,11 +378,6 @@ export default function AqelSamV2UI() {
   const transcriptRef = useRef<string>("");
   const interimRef = useRef<string>("");
   const lastSentRef = useRef<string>("");
-  const backgroundBufferRef = useRef<{text: string; timestamp: number}[]>([]);  // Rolling buffer
-  const isCapturingRef = useRef(false);          // True when button held
-  const capturedTextRef = useRef<string>("");    // Text captured during this press
-  const BUFFER_DURATION_MS = 3000;               // 3 second lookback buffer
-  const lastResultIndexRef = useRef<number>(0);             // Track last processed result
 
   // Fetch shipments on mount
   useEffect(() => {
@@ -425,75 +420,6 @@ export default function AqelSamV2UI() {
   // Add log entry
   const addLog = useCallback((action: string, status: "ok" | "error", latency?: number) => {
     setLogs((prev) => [...prev.slice(-20), { time: nowHHMM(), action, status, latency }]);
-  }, []);
-
-  // Initialize and start continuous background listening
-  useEffect(() => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      console.warn('[STT] Speech recognition not supported');
-      return;
-    }
-
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SR();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'ar-SA';
-
-    recognition.onstart = () => {
-      console.log('[STT] Continuous listening active');
-      setSttReady(true);
-    };
-
-    recognition.onresult = (event: any) => {
-      const now = Date.now();
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const transcript = result[0].transcript.trim();
-
-        if (result.isFinal && transcript) {
-          // Final result - add to buffer
-          backgroundBufferRef.current.push({ text: transcript, timestamp: now });
-          const cutoff = now - BUFFER_DURATION_MS;
-          backgroundBufferRef.current = backgroundBufferRef.current.filter(e => e.timestamp > cutoff);
-          interimRef.current = '';
-        } else if (transcript) {
-          // Interim - track separately (replaced each time)
-          interimRef.current = transcript;
-        }
-      }
-
-      // Update captured text: finals + current interim
-      if (isCapturingRef.current) {
-        const finals = backgroundBufferRef.current.map(e => e.text).join(' ');
-        capturedTextRef.current = (finals + ' ' + interimRef.current).trim();
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.error('[STT] Error:', event.error);
-      }
-    };
-
-    recognition.onend = () => {
-      if (recognitionRef.current) {
-        setTimeout(() => {
-          try { recognition.start(); } catch (e) { /* ignore */ }
-        }, 100);
-      }
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.stop();
-      }
-    };
   }, []);
 
   // Play TTS audio
@@ -614,27 +540,71 @@ export default function AqelSamV2UI() {
     }
   }, [selectedShipment, policyEnv, addLog, playAudio]);
 
-  // STT - Web Speech API (Push-to-Talk with continuous capture)
+  // STT - Simple Push-to-Talk
 
-  // Start capturing speech (recognition already running)
   const startSTT = useCallback(() => {
-    // Clear buffer and start fresh
-    backgroundBufferRef.current = [];
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      console.warn('[STT] Speech recognition not supported');
+      return;
+    }
+
+    // Create fresh instance each time
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'ar-SA';
+
+    transcriptRef.current = '';
     interimRef.current = '';
-    capturedTextRef.current = '';
-    isCapturingRef.current = true;
+
+    recognition.onstart = () => {
+      console.log('[STT] Recording started');
+      setSttReady(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = transcriptRef.current;
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0].transcript;
+
+        if (result.isFinal) {
+          finalTranscript += text + ' ';
+        } else {
+          interimTranscript = text;
+        }
+      }
+
+      transcriptRef.current = finalTranscript;
+      interimRef.current = interimTranscript;
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        console.error('[STT] Error:', event.error);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
     setRecording(true);
-    console.log('[STT] Capturing started, buffer:', capturedTextRef.current);
     addLog("stt.start", "ok");
   }, [addLog]);
 
-  // Stop capturing and send the accumulated text
   const stopSTT = useCallback(() => {
-    isCapturingRef.current = false;
     setRecording(false);
+    setSttReady(false);
 
-    const text = capturedTextRef.current.trim();
-    console.log('[STT] Capturing stopped, text:', text);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+
+    const text = (transcriptRef.current + interimRef.current).trim();
+    console.log('[STT] Recording stopped, text:', text);
 
     if (text && text !== lastSentRef.current) {
       lastSentRef.current = text;
@@ -642,7 +612,8 @@ export default function AqelSamV2UI() {
       addLog("stt.result", "ok");
     }
 
-    capturedTextRef.current = "";
+    transcriptRef.current = '';
+    interimRef.current = '';
     addLog("stt.stop", "ok");
   }, [addLog, sendMessage]);
 
