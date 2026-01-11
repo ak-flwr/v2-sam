@@ -378,6 +378,7 @@ export default function AqelSamV2UI() {
   const transcriptRef = useRef<string>("");
   const interimRef = useRef<string>("");
   const lastSentRef = useRef<string>("");
+  const wantToSendRef = useRef<boolean>(false);
 
   // Fetch shipments on mount
   useEffect(() => {
@@ -557,6 +558,7 @@ export default function AqelSamV2UI() {
 
     transcriptRef.current = '';
     interimRef.current = '';
+    wantToSendRef.current = false;
 
     recognition.onstart = () => {
       console.log('[STT] Recording started');
@@ -588,34 +590,42 @@ export default function AqelSamV2UI() {
       }
     };
 
+    recognition.onend = () => {
+      console.log('[STT] Recognition ended');
+      setRecording(false);
+      setSttReady(false);
+
+      if (wantToSendRef.current) {
+        const text = (transcriptRef.current + interimRef.current).trim();
+        console.log('[STT] Sending text:', text);
+
+        if (text && text !== lastSentRef.current) {
+          lastSentRef.current = text;
+          sendMessage(text);
+          addLog("stt.result", "ok");
+        }
+
+        wantToSendRef.current = false;
+      }
+
+      transcriptRef.current = '';
+      interimRef.current = '';
+      recognitionRef.current = null;
+      addLog("stt.stop", "ok");
+    };
+
     recognitionRef.current = recognition;
     recognition.start();
     setRecording(true);
     addLog("stt.start", "ok");
-  }, [addLog]);
+  }, [addLog, sendMessage]);
 
   const stopSTT = useCallback(() => {
-    setRecording(false);
-    setSttReady(false);
-
     if (recognitionRef.current) {
+      wantToSendRef.current = true;
       recognitionRef.current.stop();
-      recognitionRef.current = null;
     }
-
-    const text = (transcriptRef.current + interimRef.current).trim();
-    console.log('[STT] Recording stopped, text:', text);
-
-    if (text && text !== lastSentRef.current) {
-      lastSentRef.current = text;
-      sendMessage(text);
-      addLog("stt.result", "ok");
-    }
-
-    transcriptRef.current = '';
-    interimRef.current = '';
-    addLog("stt.stop", "ok");
-  }, [addLog, sendMessage]);
+  }, []);
 
   const newThread = useCallback(() => {
     setMessages([]);
